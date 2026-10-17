@@ -156,7 +156,7 @@ export function BottomTabs({ dark }: { dark?: boolean }) {
   return (
     <nav
       className={cn(
-        "glass fixed inset-x-0 bottom-0 z-40 border-t border-border sm:hidden safe-bottom",
+        "glass tg-vv-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border sm:hidden safe-bottom",
         dark && "border-white/10 bg-black/80 text-white",
       )}
       aria-label="แท็บหลัก"

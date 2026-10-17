@@ -89,6 +89,8 @@
 
 html {
   background: var(--bg);
+  /* No double-tap zoom (the player uses double-tap to seek); pinch is handled by ViewportGuard. */
+  touch-action: manipulation;
 }
 
 body {
@@ -154,6 +156,8 @@ body {
 .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+/* Bottom-fixed bars follow the real screen bottom (see ViewportGuard). */
+.tg-vv-bottom { translate: 0 var(--vv-shift, 0px); }
 
 /* Motion — Apple easing */
 .tg-overlay[data-state="open"] { animation: fadeIn 250ms var(--ease-apple); }

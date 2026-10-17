@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Noto_Sans_Thai } from "next/font/google";
 import { cookies } from "next/headers";
+import { ViewportGuard } from "@/components/shell/viewport-guard";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -21,6 +22,9 @@ export const viewport: Viewport = {
   themeColor: "#0A0A0B",
   width: "device-width",
   initialScale: 1,
+  // Pinch/double-tap zoom off on phones; ViewportGuard lifts this while a video is fullscreen.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 
@@ -28,7 +32,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const theme = (await cookies()).get("tg_theme")?.value ?? "dark";
   return (
     <html lang="th" data-theme={theme} className={`${inter.variable} ${thai.variable}`} suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <ViewportGuard />
+        {children}
+      </body>
     </html>
   );
 }

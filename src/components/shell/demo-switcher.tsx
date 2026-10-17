@@ -27,7 +27,7 @@ export function DemoSwitcher() {
         ? "สมาชิก"
         : "Free";
   return (
-    <div className="fixed bottom-[76px] left-3 z-[60] sm:bottom-4">
+    <div className="tg-vv-bottom fixed bottom-[76px] left-3 z-[60] sm:bottom-4">
       <Dropdown>
         <DropdownTrigger asChild>
           <button

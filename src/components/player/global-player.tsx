@@ -35,7 +35,7 @@ function MiniVideo({ item }: { item: PlayerItem }) {
   const close = usePlayer((s) => s.close);
   const sync = usePlayer((s) => s.sync);
   return (
-    <div className="tg-page fixed bottom-[72px] right-3 z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-[16px] border border-border bg-black shadow-2xl sm:bottom-4 sm:right-4">
+    <div className="tg-page tg-vv-bottom fixed bottom-[72px] right-3 z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-[16px] border border-border bg-black shadow-2xl sm:bottom-4 sm:right-4">
       <VideoPlayer
         id={item.id}
         title={item.title}
@@ -93,7 +93,7 @@ function AudioPlayer({ item }: { item: PlayerItem }) {
 function Bar({ item, children }: { item: PlayerItem; children: React.ReactNode }) {
   const close = usePlayer((s) => s.close);
   return (
-    <div className="fixed inset-x-0 bottom-14 z-40 px-2 pb-2 sm:bottom-0 sm:px-4 sm:pb-4 safe-bottom">
+    <div className="tg-vv-bottom fixed inset-x-0 bottom-14 z-40 px-2 pb-2 sm:bottom-0 sm:px-4 sm:pb-4 safe-bottom">
       <div className="glass mx-auto flex h-16 max-w-3xl items-center gap-3 rounded-[16px] border border-border px-3 shadow-2xl">
         <Cover src={item.thumb} size={44} />
         <p className="line-clamp-1 w-40 shrink-0 text-[14px] font-medium sm:w-56">{item.title}</p>
@@ -254,7 +254,7 @@ function AudioUI({ item }: { item: PlayerItem }) {
   return (
     <>
       {/* Mini bar */}
-      <div className="fixed inset-x-0 bottom-14 z-40 px-2 pb-2 sm:bottom-0 sm:px-4 sm:pb-4 safe-bottom">
+      <div className="tg-vv-bottom fixed inset-x-0 bottom-14 z-40 px-2 pb-2 sm:bottom-0 sm:px-4 sm:pb-4 safe-bottom">
         <div className="glass relative mx-auto flex h-16 max-w-3xl items-center gap-2 overflow-hidden rounded-[16px] border border-border pl-2 pr-1 shadow-2xl sm:gap-3 sm:px-3">
           <div className="absolute inset-x-0 top-0 h-[2px] bg-[var(--border)]" aria-hidden>
             <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
