@@ -210,6 +210,36 @@ export interface HomeSection {
   enabled: boolean;
 }
 
+/** A Home Hero slide as stored. Empty text/image fields fall back to the linked clip. */
+export interface HeroSlideRow {
+  id: string;
+  position: number;
+  enabled: boolean;
+  content_id: string | null;
+  title: string;
+  subtitle: string;
+  image_url: string | null;
+  mobile_image_url: string | null;
+  cta_label: string;
+  cta_href: string;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+/** A slide ready to render: fallbacks applied, link decided. */
+export interface HeroSlide {
+  id: string;
+  title: string;
+  subtitle: string;
+  image: string | null;
+  mobile_image: string | null;
+  cta_label: string;
+  href: string;
+  external: boolean;
+  /** The linked clip, when the button opens that clip (type, duration, members lock, "watch later"). */
+  content: Pick<Content, "id" | "type" | "duration_sec" | "visibility"> | null;
+}
+
 export interface AuditLog {
   id: string;
   admin_id: string;

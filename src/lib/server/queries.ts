@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { adminDb, must } from "@/lib/supabase/clients";
 import { isActiveUntil } from "./auth";
 import { parseChapters } from "@/lib/richtext";
+import { resolveHeroSlide } from "@/lib/hero";
 import type {
   Category,
   Chapter,
@@ -13,6 +14,8 @@ import type {
   ContentResource,
   ContentRow,
   ContentType,
+  HeroSlide,
+  HeroSlideRow,
   HomeSection,
   Notification,
   Payment,
@@ -42,6 +45,7 @@ interface Catalog {
   links: ContentLink[];
   resources: Omit<ContentResource, "storage_path">[];
   home: HomeSection[];
+  hero: HeroSlideRow[];
   settings: SiteSettings;
   at: number;
 }
@@ -61,7 +65,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
 const loadCatalog = unstable_cache(
   async (): Promise<Catalog> => {
     const db = adminDb();
-    const [content, categories, playlists, items, links, resources, home, settings] = await Promise.all([
+    const [content, categories, playlists, items, links, resources, home, hero, settings] = await Promise.all([
       db.from("content").select(PUBLIC_COLS).is("deleted_at", null).eq("media_status", "ready").in("status", ["published", "scheduled"]),
       db.from("categories").select("*").order("position"),
       db.from("playlists").select("*").order("position"),
@@ -69,6 +73,7 @@ const loadCatalog = unstable_cache(
       db.from("content_links").select("*").order("position"),
       db.from("content_resources").select("id, content_id, file_name, size_bytes, position").order("position"),
       db.from("home_sections").select("*").order("position"),
+      db.from("hero_slides").select("*").order("position"),
       db.from("site_settings").select("value").eq("key", "site").maybeSingle(),
     ]);
     return {
@@ -79,11 +84,12 @@ const loadCatalog = unstable_cache(
       links: must(links, "catalog links") as ContentLink[],
       resources: must(resources, "catalog resources") as Omit<ContentResource, "storage_path">[],
       home: must(home, "catalog home") as HomeSection[],
+      hero: must(hero, "catalog hero") as HeroSlideRow[],
       settings: { ...DEFAULT_SETTINGS, ...((settings.data?.value as Partial<SiteSettings>) ?? {}) },
       at: Date.now(),
     };
   },
-  ["tg-catalog-v1"],
+  ["tg-catalog-v2"],
   { tags: [CATALOG_TAG], revalidate: 30 },
 );
 
@@ -449,6 +455,25 @@ export async function paymentsFor(userId: string): Promise<Payment[]> {
 // ───────────────────────── Home / settings ─────────────────────────
 export async function homeSections() {
   return (await catalog()).home;
+}
+
+/** Hero slides on the site right now: switched on, inside their start/end time, clip (if any) live. */
+export async function heroSlides(): Promise<HeroSlide[]> {
+  const cat = await catalog();
+  if (cat.home.some((s) => s.type === "hero" && !s.enabled)) return [];
+  const now = Date.now();
+  const live = new Map(cat.content.filter((c) => isLive(c, now)).map((c) => [c.id, c]));
+  const out: HeroSlide[] = [];
+  for (const row of cat.hero) {
+    if (!row.enabled) continue;
+    if (row.starts_at && new Date(row.starts_at).getTime() > now) continue;
+    if (row.ends_at && new Date(row.ends_at).getTime() <= now) continue;
+    const clip = row.content_id ? live.get(row.content_id) : null;
+    if (row.content_id && !clip) continue;
+    const slide = resolveHeroSlide(row, clip ? toPublic(clip) : null);
+    if (slide) out.push(slide);
+  }
+  return out;
 }
 
 export async function siteSettings() {

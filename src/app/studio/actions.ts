@@ -17,7 +17,8 @@ import { CATALOG_TAG, isLive, isUuid } from "@/lib/server/queries";
 import { bunnyStreamEnabled, createBunnyUpload, syncBunnyStatus } from "@/lib/server/bunny";
 import { signImageUpload, storeImage } from "@/lib/server/images";
 import { isValidUrl } from "@/lib/richtext";
-import type { ContentRow, ContentType, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility } from "@/lib/types";
+import { HERO_LIMITS, HERO_MAX_SLIDES, isHeroHref } from "@/lib/hero";
+import type { ContentRow, ContentType, HeroSlideRow, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility } from "@/lib/types";
 
 export type StudioResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -159,9 +160,9 @@ export async function mediaStatusAction(id: string) {
 }
 
 // ───────── Images (covers, channel art) ─────────
-export async function imageUploadAction(folder: "content" | "playlists" | "channel", contentType: string) {
+export async function imageUploadAction(folder: "content" | "playlists" | "channel" | "hero", contentType: string) {
   return admin(() => {
-    if (!["content", "playlists", "channel"].includes(folder)) throw new HttpError(400, "ปลายทางไม่ถูกต้อง");
+    if (!["content", "playlists", "channel", "hero"].includes(folder)) throw new HttpError(400, "ปลายทางไม่ถูกต้อง");
     return signImageUpload(folder, contentType);
   });
 }
@@ -427,19 +428,20 @@ export async function reorderPlaylistsAction(ids: string[]) {
 }
 
 // ───────── Home curation ─────────
+/** Home rows below the Hero. The hero row (its on/off switch) is saved by saveHeroAction. */
 export async function saveHomeSectionsAction(sections: Pick<HomeSection, "id" | "type" | "title" | "content_ids" | "enabled">[]) {
   return admin(async (a) => {
-    const hero = sections.find((s) => s.type === "hero");
-    if (hero && hero.content_ids.length > 5) throw new HttpError(400, "Hero เลือกได้สูงสุด 5 รายการ");
     const db = adminDb();
-    const rows = sections.map((s, i) => ({
-      ...(s.id && isUuid(s.id) ? { id: s.id } : {}),
-      type: s.type,
-      title: s.title ?? "",
-      content_ids: uuids(s.content_ids ?? []),
-      enabled: !!s.enabled,
-      position: i,
-    }));
+    const rows = sections
+      .filter((s) => s.type !== "hero")
+      .map((s, i) => ({
+        ...(s.id && isUuid(s.id) ? { id: s.id } : {}),
+        type: s.type,
+        title: s.title ?? "",
+        content_ids: uuids(s.content_ids ?? []),
+        enabled: !!s.enabled,
+        position: i + 1,
+      }));
     // Write the new set first, then drop whatever isn't in it — the Home page is never left empty on an error.
     const keep: string[] = [];
     const withId = rows.filter((r) => "id" in r);
@@ -452,12 +454,92 @@ export async function saveHomeSectionsAction(sections: Pick<HomeSection, "id" | 
       const saved = must(await db.from("home_sections").insert(fresh).select("id"), "add home sections") as { id: string }[];
       keep.push(...saved.map((r) => r.id));
     }
-    let del = db.from("home_sections").delete();
-    del = keep.length ? del.not("id", "in", `(${keep.join(",")})`) : del.not("id", "is", null);
+    let del = db.from("home_sections").delete().neq("type", "hero");
+    if (keep.length) del = del.not("id", "in", `(${keep.join(",")})`);
     must(await del, "remove home sections");
     await audit(a.id, "home.update", "home", "home");
-    revalidateTag(CATALOG_TAG);
-    revalidatePath("/");
+    refreshSite("/", "page");
+  });
+}
+
+export type HeroSlideInput = Omit<HeroSlideRow, "position">;
+
+const STORAGE_PUBLIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/`;
+
+function heroImage(v: string | null | undefined, what: string) {
+  const url = v?.trim();
+  if (!url) return null;
+  if (!url.startsWith(STORAGE_PUBLIC)) throw new HttpError(400, `${what}: กรุณาอัปโหลดรูปจากปุ่มอัปโหลด`);
+  return url;
+}
+
+function heroTime(v: string | null | undefined, what: string) {
+  if (!v) return null;
+  const t = new Date(v);
+  if (Number.isNaN(t.getTime())) throw new HttpError(400, `${what}ไม่ถูกต้อง`);
+  return t.toISOString();
+}
+
+/** Replace the Hero: switch + slides in order. */
+export async function saveHeroAction(enabled: boolean, slides: HeroSlideInput[]) {
+  return admin(async (a) => {
+    if (slides.length > HERO_MAX_SLIDES) throw new HttpError(400, `Hero มีได้สูงสุด ${HERO_MAX_SLIDES} สไลด์`);
+    const db = adminDb();
+    const clipIds = uuids(slides.map((s) => s.content_id ?? ""));
+    const found = clipIds.length
+      ? (must(await db.from("content").select("id").in("id", clipIds).is("deleted_at", null), "hero clips") as { id: string }[]).map((r) => r.id)
+      : [];
+    const rows = slides.map((s, i) => {
+      const n = i + 1;
+      const content_id = s.content_id && isUuid(s.content_id) ? s.content_id : null;
+      if (content_id && !found.includes(content_id)) throw new HttpError(400, `สไลด์ ${n}: ไม่พบคลิปที่ผูกไว้`);
+      const title = (s.title ?? "").trim();
+      const subtitle = (s.subtitle ?? "").trim();
+      const cta_label = (s.cta_label ?? "").trim();
+      const cta_href = (s.cta_href ?? "").trim();
+      if (title.length > HERO_LIMITS.title) throw new HttpError(400, `สไลด์ ${n}: หัวข้อยาวเกิน ${HERO_LIMITS.title} ตัวอักษร`);
+      if (subtitle.length > HERO_LIMITS.subtitle) throw new HttpError(400, `สไลด์ ${n}: คำโปรยยาวเกิน ${HERO_LIMITS.subtitle} ตัวอักษร`);
+      if (cta_label.length > HERO_LIMITS.cta_label) throw new HttpError(400, `สไลด์ ${n}: ข้อความปุ่มยาวเกิน ${HERO_LIMITS.cta_label} ตัวอักษร`);
+      if (cta_href.length > HERO_LIMITS.cta_href || !isHeroHref(cta_href)) throw new HttpError(400, `สไลด์ ${n}: ลิงก์ปุ่มต้องขึ้นต้นด้วย / หรือ https://`);
+      const image_url = heroImage(s.image_url, `สไลด์ ${n}`);
+      const mobile_image_url = heroImage(s.mobile_image_url, `สไลด์ ${n}`);
+      if (!content_id && (!title || !cta_href || !(image_url || mobile_image_url)))
+        throw new HttpError(400, `สไลด์ ${n}: แบนเนอร์ที่ไม่ผูกคลิปต้องมีรูป หัวข้อ และลิงก์ปุ่ม`);
+      const starts_at = heroTime(s.starts_at, `สไลด์ ${n}: เวลาเริ่ม`);
+      const ends_at = heroTime(s.ends_at, `สไลด์ ${n}: เวลาสิ้นสุด`);
+      if (starts_at && ends_at && ends_at <= starts_at) throw new HttpError(400, `สไลด์ ${n}: เวลาสิ้นสุดต้องหลังเวลาเริ่ม`);
+      return {
+        ...(isUuid(s.id) ? { id: s.id } : {}),
+        position: i,
+        enabled: !!s.enabled,
+        content_id,
+        title,
+        subtitle,
+        image_url,
+        mobile_image_url,
+        cta_label,
+        cta_href,
+        starts_at,
+        ends_at,
+        updated_at: nowIso(),
+      };
+    });
+
+    const keep: string[] = [];
+    const withId = rows.filter((r) => "id" in r);
+    const fresh = rows.filter((r) => !("id" in r));
+    if (withId.length) keep.push(...(must(await db.from("hero_slides").upsert(withId, { onConflict: "id" }).select("id"), "save hero") as { id: string }[]).map((r) => r.id));
+    if (fresh.length) keep.push(...(must(await db.from("hero_slides").insert(fresh).select("id"), "add hero") as { id: string }[]).map((r) => r.id));
+    let del = db.from("hero_slides").delete();
+    del = keep.length ? del.not("id", "in", `(${keep.join(",")})`) : del.not("id", "is", null);
+    must(await del, "remove hero slides");
+
+    const hero = must(await db.from("home_sections").select("id").eq("type", "hero").maybeSingle(), "hero section") as { id: string } | null;
+    if (hero) must(await db.from("home_sections").update({ enabled: !!enabled }).eq("id", hero.id), "hero switch");
+    else must(await db.from("home_sections").insert({ type: "hero", title: "Hero", enabled: !!enabled, position: 0 }), "hero switch");
+
+    await audit(a.id, "home.hero", "home", "hero");
+    refreshSite("/", "page");
   });
 }
 

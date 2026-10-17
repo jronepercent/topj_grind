@@ -4,6 +4,7 @@ import {
   categories,
   continueWatching,
   getContentsByIds,
+  heroSlides,
   homeSections,
   listContent,
   playlistsWithMeta,
@@ -19,12 +20,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const { filter } = await searchParams;
   const viewer = await getViewer();
   const sections = (await homeSections()).filter((s) => s.enabled);
-  const hero = sections.find((s) => s.type === "hero");
   const custom = sections.filter((s) => s.type === "custom");
   // Everything below is independent — fetch in parallel.
-  const [progress, heroAll, latest, shorts, podcasts, playlists, cont, customLists, cats] = await Promise.all([
+  const [progress, heroItems, latest, shorts, podcasts, playlists, cont, customLists, cats] = await Promise.all([
     progressMap(viewer?.id),
-    hero ? getContentsByIds(hero.content_ids) : Promise.resolve([]),
+    heroSlides(),
     listContent({ type: "video", limit: 8 }),
     listContent({ type: "short", limit: 12 }),
     listContent({ type: "podcast", limit: 12 }),
@@ -33,7 +33,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     Promise.all(custom.map((s) => getContentsByIds(s.content_ids))),
     categories(),
   ]);
-  const heroItems = heroAll.slice(0, 5);
   const customItems = new Map(custom.map((s, i) => [s.id, customLists[i]]));
   const more = await listContent({ types: ["video", "podcast"], exclude: latest.map((c) => c.id), limit: 24 });
 

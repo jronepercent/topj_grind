@@ -25,6 +25,9 @@ export function useViewer() {
   return c;
 }
 
+/** Same context, or null outside the public site (e.g. the Studio Hero preview). */
+export const useOptionalViewer = () => React.useContext(ViewerContext);
+
 export function Providers({
   viewer,
   settings,

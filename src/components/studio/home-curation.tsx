@@ -36,54 +36,37 @@ const TYPE_DESC: Record<HomeSectionType, string> = {
 export function HomeCuration({ sections: initial, items }: { sections: CurationSection[]; items: PickItem[] }) {
   const router = useRouter();
   const byId = React.useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
-  const initialHero = initial.find((s) => s.type === "hero") ?? { id: "", type: "hero" as const, title: "Hero", content_ids: [], enabled: true };
-  const [hero, setHero] = React.useState<CurationSection>(initialHero);
-  const [sections, setSections] = React.useState<CurationSection[]>(initial.filter((s) => s.type !== "hero"));
-  const [picker, setPicker] = React.useState<null | "hero" | string>(null);
+  const [sections, setSections] = React.useState<CurationSection[]>(initial);
+  const [picker, setPicker] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const baseline = React.useRef(JSON.stringify({ hero: initialHero, sections: initial.filter((s) => s.type !== "hero") }));
-  const dirty = JSON.stringify({ hero, sections }) !== baseline.current;
+  const baseline = React.useRef(JSON.stringify(initial));
+  const dirty = JSON.stringify(sections) !== baseline.current;
 
   const patch = (id: string, p: Partial<CurationSection>) => setSections((xs) => xs.map((s) => (s.id === id ? { ...s, ...p } : s)));
 
   const save = async () => {
     if (sections.some((s) => !s.title.trim())) return void toast("กรุณาตั้งชื่อทุกแถบ");
     setSaving(true);
-    const payload = [hero, ...sections].map((s) => ({ ...s, title: s.title.trim(), id: s.id.startsWith("new-") ? "" : s.id }));
+    const payload = sections.map((s) => ({ ...s, title: s.title.trim(), id: s.id.startsWith("new-") ? "" : s.id }));
     const r = await saveHomeSectionsAction(payload);
     setSaving(false);
     if (!r.ok) return void toast(r.error);
-    baseline.current = JSON.stringify({ hero, sections });
+    baseline.current = JSON.stringify(sections);
     toast("บันทึกหน้า Home แล้ว");
     router.refresh();
   };
 
   const addCustom = () => {
     const id = `new-${Math.random().toString(36).slice(2)}`;
-    setSections((xs) => [{ id, type: "custom", title: "เริ่มต้นที่นี่", content_ids: [], enabled: true }, ...xs]);
+    setSections((xs) => [...xs, { id, type: "custom", title: "แถบใหม่", content_ids: [], enabled: true }]);
     setOpen(id);
   };
 
-  const pickerSection = picker && picker !== "hero" ? sections.find((s) => s.id === picker) : null;
+  const pickerSection = picker ? sections.find((s) => s.id === picker) : null;
 
   return (
-    <div className="space-y-6 pb-20">
-      <Card>
-        <CardHeader
-          title="Hero"
-          description="คลิปเด่นด้านบนสุดของหน้าแรก สูงสุด 5 รายการ ลากเพื่อเรียงลำดับ"
-          action={
-            <Button variant="outline" size="sm" disabled={hero.content_ids.length >= 5} onClick={() => setPicker("hero")}>
-              <Plus /> เพิ่ม <span className="tnum text-text-2">{hero.content_ids.length}/5</span>
-            </Button>
-          }
-        />
-        <div className="px-3 pb-4 pt-3">
-          <ItemList ids={hero.content_ids} byId={byId} onChange={(ids) => setHero((h) => ({ ...h, content_ids: ids }))} empty="ยังไม่ได้เลือกคลิปใน Hero" />
-        </div>
-      </Card>
-
+    <div className="pb-20">
       <Card>
         <CardHeader
           title="แถบบนหน้า Home"
@@ -155,9 +138,7 @@ export function HomeCuration({ sections: initial, items }: { sections: CurationS
             variant="ghost"
             tabIndex={dirty ? 0 : -1}
             onClick={() => {
-              const b = JSON.parse(baseline.current) as { hero: CurationSection; sections: CurationSection[] };
-              setHero(b.hero);
-              setSections(b.sections);
+              setSections(JSON.parse(baseline.current) as CurationSection[]);
             }}
           >
             ยกเลิก
@@ -171,14 +152,12 @@ export function HomeCuration({ sections: initial, items }: { sections: CurationS
       <ContentPickerDialog
         open={!!picker}
         onOpenChange={(o) => !o && setPicker(null)}
-        title={picker === "hero" ? "เพิ่มคลิปใน Hero" : `เพิ่มคลิปใน “${pickerSection?.title ?? ""}”`}
-        hint={`${picker === "hero" ? `เลือกได้อีก ${5 - hero.content_ids.length} รายการ · ` : ""}คลิปที่ยังไม่เผยแพร่จะขึ้นหน้าเว็บเมื่อเผยแพร่แล้ว`}
+        title={`เพิ่มคลิปใน “${pickerSection?.title ?? ""}”`}
+        hint="คลิปที่ยังไม่เผยแพร่จะขึ้นหน้าเว็บเมื่อเผยแพร่แล้ว"
         items={items}
-        selected={picker === "hero" ? hero.content_ids : (pickerSection?.content_ids ?? [])}
-        disabled={picker === "hero" && hero.content_ids.length >= 5}
+        selected={pickerSection?.content_ids ?? []}
         onAdd={(id) => {
-          if (picker === "hero") setHero((h) => (h.content_ids.length >= 5 ? h : { ...h, content_ids: [...h.content_ids, id] }));
-          else if (pickerSection) patch(pickerSection.id, { content_ids: [...pickerSection.content_ids, id] });
+          if (pickerSection) patch(pickerSection.id, { content_ids: [...pickerSection.content_ids, id] });
         }}
       />
     </div>

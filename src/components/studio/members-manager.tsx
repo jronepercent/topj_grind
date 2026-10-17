@@ -44,6 +44,7 @@ const ACTION_LABEL: Record<string, string> = {
   "playlist.update": "แก้ไข Playlist",
   "playlist.delete": "ลบ Playlist",
   "home.update": "จัดหน้า Home",
+  "home.hero": "แก้ Hero หน้าแรก",
   "settings.update": "แก้ไขการตั้งค่าช่อง",
   "membership.extend": "ต่ออายุสมาชิก",
   "membership.set_date": "กำหนดวันหมดอายุ",

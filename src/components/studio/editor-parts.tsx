@@ -300,7 +300,7 @@ export async function captureFrames(file: File, count = 3): Promise<string[]> {
 }
 
 /** Send a picked image file straight to Storage (any size) and resolve to its public URL. */
-export async function uploadImageFile(file: File, folder: "content" | "playlists" | "channel") {
+export async function uploadImageFile(file: File, folder: "content" | "playlists" | "channel" | "hero") {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ JPG, PNG หรือ WebP");
   const t = toast.loading("กำลังอัปโหลดรูป…");
   try {
