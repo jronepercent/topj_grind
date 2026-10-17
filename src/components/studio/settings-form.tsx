@@ -380,7 +380,7 @@ function SchedulerCard() {
             const r = await runSchedulerAction();
             setBusy(false);
             if (!r.ok) return void toast(r.error);
-            setResult({ ...r.data, at: new Date().toISOString() });
+            setResult({ published: r.data.published, reminded: r.data.reminded, at: new Date().toISOString() });
             toast("รันงานตั้งเวลาแล้ว");
           }}
         >

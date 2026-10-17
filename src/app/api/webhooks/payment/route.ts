@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > MAX_BODY) return NextResponse.json({ error: "payload too large" }, { status: 413 });
   const raw = await req.text();
-  if (raw.length > MAX_BODY) return NextResponse.json({ error: "payload too large" }, { status: 413 });
+  if (Buffer.byteLength(raw) > MAX_BODY) return NextResponse.json({ error: "payload too large" }, { status: 413 });
 
   if (!validSignature(raw, req.headers.get("x-signature"), secret)) {
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
 
-  const result = applyPayment(body, body);
+  const result = await applyPayment(body, body);
   if (result.status !== 200) return NextResponse.json({ error: result.error }, { status: result.status });
   return NextResponse.json({ expires_at: result.expires_at, duplicate: result.duplicate });
 }

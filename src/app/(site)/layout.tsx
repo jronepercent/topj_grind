@@ -1,13 +1,12 @@
 import { getViewer, isDemoMode } from "@/lib/server/auth";
-import { siteSettings } from "@/lib/server/queries";
-import { db } from "@/lib/server/store";
+import { siteSettings, unreadCount } from "@/lib/server/queries";
 import { Providers } from "@/components/providers";
 import { ShellClient } from "@/components/shell/shell-client";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const viewer = await getViewer();
-  const s = siteSettings();
-  const unread = viewer ? db().notifications.filter((n) => n.user_id === viewer.id && !n.read_at).length : 0;
+  const s = await siteSettings();
+  const unread = viewer ? await unreadCount(viewer.id) : 0;
   return (
     <Providers
       viewer={viewer}

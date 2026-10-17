@@ -1,7 +1,7 @@
 import "server-only";
 import { FlaskConical } from "lucide-react";
 import { isDemoMode } from "@/lib/server/auth";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/server/seed";
+import { DEMO_ACCOUNTS, demoPassword } from "@/lib/server/demo-accounts";
 
 const LABEL: Record<keyof typeof DEMO_ACCOUNTS, string> = {
   admin: "Admin (JR)",
@@ -12,7 +12,8 @@ const LABEL: Record<keyof typeof DEMO_ACCOUNTS, string> = {
 
 /** Demo mode only: lists the sample accounts so reviewers can sign in quickly. */
 export function DemoAccounts() {
-  if (!isDemoMode()) return null;
+  const DEMO_PASSWORD = demoPassword();
+  if (!isDemoMode() || !DEMO_PASSWORD) return null;
   const rows = Object.entries(DEMO_ACCOUNTS) as [keyof typeof DEMO_ACCOUNTS, string][];
   return (
     <aside className="mt-4 rounded-[16px] border border-dashed border-border-strong px-4 py-3.5" aria-label="บัญชีทดลอง (โหมดเดโม)">

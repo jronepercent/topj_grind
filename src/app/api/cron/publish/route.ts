@@ -9,5 +9,5 @@ export async function GET(req: Request) {
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(runScheduler(Date.now(), false));
+  return NextResponse.json(await runScheduler(false));
 }

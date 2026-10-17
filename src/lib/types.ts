@@ -244,6 +244,10 @@ export interface Viewer {
   expires_at: string | null;
   autoplay: boolean;
   theme: ThemePref;
+  is_banned: boolean;
+  save_history: boolean;
+  /** #0042 on the member card — order of first payment */
+  member_no: number | null;
 }
 
 export interface PlaylistWithMeta extends Playlist {

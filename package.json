@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "reset:demo": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true})\"",
     "db:migrate": "node scripts/db-migrate.mjs",
-    "db:test-rls": "node scripts/db-test-rls.mjs"
+    "db:test-rls": "node scripts/db-test-rls.mjs",
+    "db:seed": "node scripts/db-seed.mts",
+    "db:make-admin": "node scripts/db-make-admin.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -15,19 +15,19 @@ type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const c = getContent(id, null);
+  const c = await getContent(id, null);
   return c ? contentMetadata(c, `/podcasts/${id}`) : { title: "ไม่พบตอนนี้" };
 }
 
 export default async function EpisodePage({ params }: Props) {
   const { id } = await params;
   const viewer = await getViewer();
-  const c = getContent(id, viewer);
+  const c = await getContent(id, viewer);
   if (!c || c.type !== "podcast") notFound();
-  const all = listContent({ type: "podcast", limit: 200 });
+  const all = await listContent({ type: "podcast", limit: 200 });
   const queue = all.some((x) => x.id === c.id) ? all : [c, ...all];
   const chapters = getChapters(c);
-  const p = getProgress(viewer?.id, id);
+  const p = await getProgress(viewer?.id, id);
   const locked = c.visibility === "members" && !viewer?.is_member;
   const more = all.filter((x) => x.id !== id).slice(0, 6);
 
@@ -56,8 +56,8 @@ export default async function EpisodePage({ params }: Props) {
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <ChannelRow />
-          <ShowNotes c={c} chapters={chapters} links={getLinks(id)} resources={getResources(id)} queue={queue} />
-          <Comments contentId={id} visibility={c.visibility} enabled={c.comments_enabled} initial={listComments(id, viewer, { limit: 20 })} />
+          <ShowNotes c={c} chapters={chapters} links={await getLinks(id)} resources={await getResources(id)} queue={queue} />
+          <Comments contentId={id} visibility={c.visibility} enabled={c.comments_enabled} initial={await listComments(id, viewer, { limit: 20 })} />
         </div>
         <aside className="space-y-3">
           <h2 className="t-h2 mb-2">ตอนอื่นๆ</h2>

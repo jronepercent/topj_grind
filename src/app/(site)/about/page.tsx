@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const s = siteSettings();
+  const s = await siteSettings();
   return {
     title: "เกี่ยวกับช่อง",
     description: s.tagline || s.about.slice(0, 160),
@@ -17,12 +17,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function AboutPage() {
-  const s = siteSettings();
+  const s = await siteSettings();
   const viewer = await getViewer();
   const counts = [
-    { label: "วิดีโอ", n: countContent("video"), Icon: SquarePlay },
-    { label: "Shorts", n: countContent("short"), Icon: Zap },
-    { label: "พอดแคสต์", n: countContent("podcast"), Icon: Headphones },
+    { label: "วิดีโอ", n: await countContent("video"), Icon: SquarePlay },
+    { label: "Shorts", n: await countContent("short"), Icon: Zap },
+    { label: "พอดแคสต์", n: await countContent("podcast"), Icon: Headphones },
   ];
   const socials = s.socials.filter((x) => /^https?:\/\//i.test(x.url));
   const membership = "/membership?from=%2Fabout";

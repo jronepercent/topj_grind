@@ -1,54 +1,42 @@
 import Link from "next/link";
 import { ArrowUpRight, CircleAlert, Clock, Eye, TriangleAlert, Users, Hourglass } from "lucide-react";
-import { db } from "@/lib/server/store";
+import { adminDb } from "@/lib/supabase/clients";
 import { isLive } from "@/lib/server/queries";
 import { Avatar, EmptyState } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, DailyBars, PageHeader, StatCard, StudioThumb } from "@/components/studio/ui";
-import { DAY, currentMemberCount, dailyViews, isUnanswered } from "./_lib/data";
+import { dailyFromViews, membershipCounts, recentViews, studioContent, unansweredComments } from "./_lib/data";
 import { formatCount, formatNumber, timeAgo, TYPE_LABEL } from "@/lib/format";
 
 export const metadata = { title: "Dashboard" };
 
 export default async function StudioDashboard() {
-  const d = db();
   const now = Date.now();
-  const since = now - 28 * DAY;
+  const [recent, counts, content, unanswered, paymentErrorsRes] = await Promise.all([
+    recentViews(28, undefined, now),
+    membershipCounts(now),
+    studioContent(),
+    unansweredComments(5),
+    adminDb().from("payment_errors").select("id", { count: "exact", head: true }).eq("resolved", false),
+  ]);
 
-  const recentViews = d.views.filter((v) => new Date(v.created_at).getTime() >= since);
-  const views28 = recentViews.length;
-  const watchHours = recentViews.reduce((s, v) => s + v.watched_sec, 0) / 3600;
-  const members = currentMemberCount(now);
-  const expiring = d.subscriptions.filter((s) => {
-    if (!s.expires_at) return false;
-    const left = new Date(s.expires_at).getTime() - now;
-    return left > 0 && left <= 7 * DAY;
-  }).length;
-  const daily = dailyViews(28, undefined, now);
+  const views28 = recent.length;
+  const watchHours = recent.reduce((s, v) => s + (v.watched_sec || 0), 0) / 3600;
+  const members = counts.members;
+  const expiring = counts.expiring7;
+  const daily = dailyFromViews(recent, 28, now);
 
   // Top content by views in the last 28 days (falls back to lifetime count on ties)
   const per = new Map<string, number>();
-  for (const v of recentViews) per.set(v.content_id, (per.get(v.content_id) ?? 0) + 1);
-  const top = d.content
-    .filter((c) => !c.deleted_at)
+  for (const v of recent) per.set(v.content_id, (per.get(v.content_id) ?? 0) + 1);
+  const top = content
     .map((c) => ({ c, n: per.get(c.id) ?? 0 }))
     .sort((a, b) => b.n - a.n || b.c.view_count - a.c.view_count)
     .slice(0, 5);
 
-  const admins = new Set(d.profiles.filter((p) => p.role === "admin").map((p) => p.id));
-  const unanswered = d.comments
-    .filter((c) => !c.parent_id && !c.deleted_at && !admins.has(c.user_id) && isUnanswered(c.id, admins))
-    .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-    .slice(0, 5)
-    .map((c) => ({
-      c,
-      author: d.profiles.find((p) => p.id === c.user_id),
-      content: d.content.find((x) => x.id === c.content_id),
-    }));
-
-  const failed = d.content.filter((c) => c.media_status === "failed" && !c.deleted_at);
-  const paymentErrors = d.payment_errors.filter((e) => !e.resolved).length;
-  const liveCount = d.content.filter((c) => isLive(c, now)).length;
+  const failed = content.filter((c) => c.media_status === "failed");
+  const paymentErrors = paymentErrorsRes.count ?? 0;
+  const liveCount = content.filter((c) => isLive(c, now)).length;
 
   return (
     <div>

@@ -26,7 +26,10 @@ let fail = 0;
 
 async function as(who, fn) {
   // switch to the browser's role for this step
-  if (who === "anon") {
+  if (who === "server") {
+    await q("set local role service_role");
+    await q("select set_config('request.jwt.claims', '{\"role\":\"service_role\"}', true), set_config('request.jwt.claim.sub', '', true)");
+  } else if (who === "anon") {
     await q("set local role anon");
     await q("select set_config('request.jwt.claims', '{\"role\":\"anon\"}', true), set_config('request.jwt.claim.sub', '', true)");
   } else {
@@ -136,6 +139,9 @@ try {
   await check("can pin a comment", "admin",
     async () => (await q("update comments set is_pinned = true where id = $1 returning is_pinned", [memberComment])).rows[0]?.is_pinned,
     (o) => o.ok && o.value === true);
+  await check("server (JR moderation via service role) can pin and heart", "server",
+    async () => (await q("update comments set is_pinned = true, creator_hearted = true where id = $1 returning is_pinned, creator_hearted", [memberComment])).rows[0],
+    (o) => o.ok && o.value?.is_pinned === true && o.value?.creator_hearted === true);
   await check("can see drafts", "admin",
     async () => (await q("select id from content_public where id = $1", [C.draft])).rowCount,
     (o) => o.ok && o.value === 1);

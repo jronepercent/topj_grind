@@ -1,33 +1,23 @@
 import { NextResponse } from "next/server";
-import { getViewer } from "@/lib/server/auth";
-import { db } from "@/lib/server/store";
-import { getContentRow, isLive } from "@/lib/server/queries";
+import { getViewer, isDemoMode } from "@/lib/server/auth";
+import { adminDb } from "@/lib/supabase/clients";
+import { getContentRow, isLive, isUuid } from "@/lib/server/queries";
 
 export const dynamic = "force-dynamic";
 
-/** Members-only download. Production: Supabase Storage private bucket → signed URL (10 minutes). */
+/** Members-only download: Supabase Storage private bucket → signed URL valid 10 minutes. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const viewer = await getViewer();
-  const res = db().content_resources.find((r) => r.id === id);
-  const c = res && getContentRow(res.content_id);
+  if (!isUuid(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const { data: res } = await adminDb().from("content_resources").select("*").eq("id", id).maybeSingle();
+  const c = res ? await getContentRow(res.content_id) : null;
   if (!res || !c || (!isLive(c) && !viewer?.is_admin)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (!viewer?.is_member) return NextResponse.json({ error: "members_only" }, { status: viewer ? 403 : 401 });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (url && key) {
-    const r = await fetch(`${url}/storage/v1/object/sign/resources/${res.storage_path}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "application/json" },
-      body: JSON.stringify({ expiresIn: 600 }),
-    });
-    if (r.ok) {
-      const { signedURL } = (await r.json()) as { signedURL: string };
-      return NextResponse.redirect(`${url}/storage/v1${signedURL}&download=${encodeURIComponent(res.file_name)}`);
-    }
-    return NextResponse.json({ error: "storage_error" }, { status: 502 });
-  }
+  const signed = await adminDb().storage.from("resources").createSignedUrl(res.storage_path, 600, { download: res.file_name });
+  if (signed.data?.signedUrl) return NextResponse.redirect(signed.data.signedUrl);
+  if (!isDemoMode()) return NextResponse.json({ error: "file_missing" }, { status: 404 });
 
   // Demo mode: generate a tiny placeholder file
   const isPdf = res.file_name.toLowerCase().endsWith(".pdf");

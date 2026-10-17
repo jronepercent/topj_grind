@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getViewer } from "@/lib/server/auth";
 import { history, likedContent, playlistItems, playlistsWithMeta, popular, progressMap, savedContent } from "@/lib/server/queries";
-import { db } from "@/lib/server/store";
 import { EmptyState } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { thaiDate } from "@/lib/format";
@@ -42,7 +41,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     );
   }
 
-  const hist = history(viewer.id);
+  const hist = await history(viewer.id);
   const now = Date.now();
   const today = dayKey(new Date(now));
   const yesterday = dayKey(new Date(now - 86_400_000));
@@ -57,12 +56,14 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     g.items.push(h.content);
   }
 
-  const progress = progressMap(viewer.id);
-  const learning = playlistsWithMeta(viewer.id)
-    .filter((p) => p.completed_count > 0 || playlistItems(p.id).some((c) => progress[c.id]))
+  const progress = await progressMap(viewer.id);
+  const all = await playlistsWithMeta(viewer.id);
+  const itemsByPlaylist = await Promise.all(all.map((p) => playlistItems(p.id)));
+  const learning = all
+    .filter((p, i) => p.completed_count > 0 || itemsByPlaylist[i].some((c) => progress[c.id]))
     .sort((a, b) => Number(a.completed_count === a.item_count) - Number(b.completed_count === b.item_count));
 
-  const saveHistory = db().profiles.find((p) => p.id === viewer.id)?.save_history ?? true;
+  const saveHistory = viewer.save_history;
   const initialTab = TABS.find((t) => t === tab) ?? "overview";
 
   return (
@@ -71,12 +72,12 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       <LibraryView
         initialTab={initialTab}
         history={groups}
-        later={savedContent(viewer.id)}
-        liked={likedContent(viewer.id)}
+        later={await savedContent(viewer.id)}
+        liked={await likedContent(viewer.id)}
         courses={learning}
         progress={progress}
         saveHistory={saveHistory}
-        suggestions={popular(4)}
+        suggestions={await popular(4)}
       />
     </div>
   );

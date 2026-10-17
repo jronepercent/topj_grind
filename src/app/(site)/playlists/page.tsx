@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function PlaylistsPage() {
   const viewer = await getViewer();
-  const playlists = playlistsWithMeta(viewer?.id);
+  const playlists = await playlistsWithMeta(viewer?.id);
   const courses = playlists.filter((p) => p.is_course);
   const others = playlists.filter((p) => !p.is_course);
 

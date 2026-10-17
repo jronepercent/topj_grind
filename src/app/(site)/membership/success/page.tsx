@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getViewer, isDemoMode } from "@/lib/server/auth";
 import { siteSettings } from "@/lib/server/queries";
-import { db } from "@/lib/server/store";
+import { subscriptionFor } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { SuccessPoller } from "../_components/success-poller";
@@ -46,10 +46,10 @@ export default async function MembershipSuccessPage({
   }
 
   // If the webhook already landed in the last few minutes (fast payment), celebrate right away.
-  const sub = db().subscriptions.find((x) => x.user_id === viewer.id);
+  const sub = await subscriptionFor(viewer.id);
   const justPaid =
     viewer.is_member && !!sub?.updated_at && Date.now() - new Date(sub.updated_at).getTime() < 10 * 60_000 && !!sub.expires_at;
-  const line = siteSettings().socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null;
+  const line = (await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null;
 
   return (
     <div className="tg-page mx-auto max-w-[1800px] px-4 sm:px-6 lg:px-8">

@@ -9,7 +9,7 @@ export const metadata = { title: "คอนเทนต์" };
 
 export default async function StudioContentPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
-  const rows = studioContentRows();
+  const rows = await studioContentRows();
   return (
     <div>
       <PageHeader

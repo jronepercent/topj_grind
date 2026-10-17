@@ -1,73 +1,66 @@
 import "server-only";
-import { db, commit, uid, nowIso } from "./store";
-import { HttpError, isMemberUser } from "./auth";
-import { isLive, getContentRow } from "./queries";
-import { contentHref, thaiDate, daysUntil } from "@/lib/format";
+import { revalidateTag } from "next/cache";
+import { adminDb, must, userDb } from "@/lib/supabase/clients";
+import { HttpError } from "./auth";
+import { CATALOG_TAG, getContentRow, isLive, isUuid } from "./queries";
+import { contentHref, thaiDate } from "@/lib/format";
 import { COMPLETE_RATIO, viewThresholdSec } from "@/lib/view-rules";
 import type { ContentRow, Notification, PaymentMethod, Viewer } from "@/lib/types";
 
 const DAY = 86_400_000;
 export const MEMBERSHIP_DAYS = Number(process.env.MEMBERSHIP_DAYS ?? 30);
+const nowIso = () => new Date().toISOString();
 
-// ───────── Notifications ─────────
-export function notify(n: Omit<Notification, "id" | "read_at" | "created_at">) {
-  db().notifications.push({ ...n, id: uid("n-"), read_at: null, created_at: nowIso() });
-  commit();
+/** Turn database errors from RLS / guard triggers into messages people understand. */
+function friendly(err: { code?: string; message: string } | null, fallback: string): never {
+  if (err?.code === "42501") throw new HttpError(403, fallback);
+  if (err?.code === "22023") throw new HttpError(400, "ข้อความมีคำที่ไม่อนุญาต");
+  throw new HttpError(500, err?.message ?? fallback);
 }
 
-export function notifyNewContent(c: ContentRow) {
-  for (const p of db().profiles) {
-    if (p.role === "admin") continue;
-    db().notifications.push({
-      id: uid("n-"),
-      user_id: p.id,
-      type: "new_content",
-      title: "คลิปใหม่จาก TOPJ_GRIND",
-      body: c.title,
-      link: contentHref(c),
-      image_url: c.thumbnail_url,
-      read_at: null,
-      created_at: nowIso(),
-    });
-  }
-  commit();
+// ───────────────────────── Notifications ─────────────────────────
+export async function notify(n: Omit<Notification, "id" | "read_at" | "created_at">) {
+  await adminDb().from("notifications").insert(n);
 }
 
-export function markAllRead(userId: string) {
-  const t = nowIso();
-  for (const n of db().notifications) if (n.user_id === userId && !n.read_at) n.read_at = t;
-  commit();
+export async function notifyNewContent(c: Pick<ContentRow, "id" | "type" | "title" | "thumbnail_url">) {
+  const users = must(await adminDb().from("profiles").select("id").neq("role", "admin"), "profiles");
+  if (!users.length) return;
+  const rows = users.map((u) => ({
+    user_id: u.id,
+    type: "new_content",
+    title: "คลิปใหม่จาก TOPJ_GRIND",
+    body: c.title,
+    link: contentHref(c),
+    image_url: c.thumbnail_url,
+  }));
+  for (let i = 0; i < rows.length; i += 500) await adminDb().from("notifications").insert(rows.slice(i, i + 500));
 }
 
-/** The single place a clip goes live "now". */
-export function publishNow(c: ContentRow) {
-  c.status = "published";
-  c.published_at = nowIso();
-  c.scheduled_at = null;
-  c.publish_when_ready = false;
+export async function markAllRead(userId: string) {
+  const db = await userDb();
+  await db.from("notifications").update({ read_at: nowIso() }).eq("user_id", userId).is("read_at", null);
+}
+
+// ───────────────────────── Publishing ─────────────────────────
+/** Fields that make a clip go live "now". */
+export function publishNowPatch() {
+  return { status: "published" as const, published_at: nowIso(), scheduled_at: null, publish_when_ready: false };
 }
 
 /** "เผยแพร่ทันที" chosen before processing finished → publish once media is ready. */
-export function finalizeIfReady(c: ContentRow) {
+export async function finalizeIfReady(c: ContentRow) {
   if (c.media_status !== "ready" || !c.publish_when_ready) return;
   if (c.status === "published") {
-    c.publish_when_ready = false;
+    await adminDb().from("content").update({ publish_when_ready: false }).eq("id", c.id);
     return;
   }
-  publishNow(c);
-  notifyNewContent(c);
+  await adminDb().from("content").update(publishNowPatch()).eq("id", c.id);
+  revalidateTag(CATALOG_TAG);
+  await notifyNewContent(c);
 }
 
-// ───────── Membership ─────────
-function subOf(userId: string) {
-  let s = db().subscriptions.find((x) => x.user_id === userId);
-  if (!s) {
-    s = { user_id: userId, expires_at: null, first_paid_at: null, updated_at: nowIso() };
-    db().subscriptions.push(s);
-  }
-  return s;
-}
-
+// ───────────────────────── Membership ─────────────────────────
 /** new_expires_at = max(now, current_expires_at) + 30 days × months */
 export function extendFrom(current: string | null, days: number, now = Date.now()) {
   const base = Math.max(now, current ? new Date(current).getTime() : 0);
@@ -85,325 +78,281 @@ export interface PaymentPayload {
   paid_at: string;
 }
 
-export type PaymentResult =
-  | { status: 200; expires_at: string; duplicate: boolean }
-  | { status: 404 | 400; error: string };
+export type PaymentResult = { status: 200; expires_at: string; duplicate: boolean } | { status: 404 | 400; error: string };
 
-export function applyPayment(p: PaymentPayload, raw: unknown): PaymentResult {
-  const d = db();
+/** Payment contract §9.1 — the database function apply_payment() does the atomic, idempotent part. */
+export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<PaymentResult> {
   if (!p || typeof p.reference !== "string" || !p.reference) return { status: 400, error: "missing reference" };
+  const db = adminDb();
   const months = Math.max(1, Math.floor(Number(p.months) || 1));
 
-  // 1) Idempotent on reference
-  const dup = d.payments.find((x) => x.reference === p.reference);
-  if (dup) {
-    return { status: 200, expires_at: subOf(dup.user_id).expires_at!, duplicate: true };
-  }
+  const dup = await db.from("payments").select("user_id").eq("reference", p.reference).maybeSingle();
+  const duplicate = !!dup.data;
 
-  const user =
-    (p.user_id && d.profiles.find((x) => x.id === p.user_id)) ||
-    (p.email && d.profiles.find((x) => x.email.toLowerCase() === String(p.email).toLowerCase()));
-  if (!user) {
-    d.payment_errors.push({ id: uid("pe-"), payload: raw, reason: "ไม่พบผู้ใช้", resolved: false, created_at: nowIso() });
-    commit();
+  let userId: string | null = null;
+  if (p.user_id && isUuid(p.user_id)) {
+    const { data } = await db.from("profiles").select("id").eq("id", p.user_id).maybeSingle();
+    userId = data?.id ?? null;
+  }
+  if (!userId && p.email) {
+    const { data } = await db.rpc("user_id_by_email", { p_email: String(p.email) });
+    userId = (data as string | null) ?? null;
+  }
+  if (!userId && dup.data) userId = dup.data.user_id;
+  if (!userId) {
+    await db.from("payment_errors").insert({ payload: raw, reason: "ไม่พบผู้ใช้" });
     return { status: 404, error: "user not found" };
   }
 
-  // 2) Record payment
-  d.payments.push({
-    id: uid("pay-"),
-    user_id: user.id,
-    amount: Number(p.amount) || 0,
-    currency: p.currency || "THB",
-    months,
-    method: p.method,
-    reference: p.reference,
-    paid_at: p.paid_at || nowIso(),
-    raw,
-    created_at: nowIso(),
+  const { data, error } = await db.rpc("apply_payment", {
+    p_user_id: userId,
+    p_amount: Number(p.amount) || 0,
+    p_currency: p.currency || "THB",
+    p_months: months,
+    p_method: p.method,
+    p_reference: p.reference,
+    p_paid_at: p.paid_at || nowIso(),
+    p_raw: raw as object,
   });
-
-  // 3) Extend — paying early never loses days
-  const s = subOf(user.id);
-  s.expires_at = extendFrom(s.expires_at, MEMBERSHIP_DAYS * months);
-  s.first_paid_at ??= p.paid_at || nowIso();
-  s.updated_at = nowIso();
-
-  // 4) Notify
-  notify({
-    user_id: user.id,
-    type: "payment",
-    title: "ชำระเงินสำเร็จ",
-    body: `สมาชิกถึงวันที่ ${thaiDate(s.expires_at)}`,
-    link: "/account",
-    image_url: null,
-  });
-  commit();
-  return { status: 200, expires_at: s.expires_at, duplicate: false };
+  if (error) throw new Error(`apply_payment: ${error.message}`);
+  return { status: 200, expires_at: data as string, duplicate };
 }
 
-export function audit(adminId: string, action: string, target_type: string, target_id: string, note = "") {
-  db().admin_audit_log.push({ id: uid("al-"), admin_id: adminId, action, target_type, target_id, note, created_at: nowIso() });
-  commit();
+export async function audit(adminId: string, action: string, target_type: string, target_id: string, note = "") {
+  await adminDb().from("admin_audit_log").insert({ admin_id: adminId, action, target_type, target_id, note });
 }
 
-export function manualExtend(admin: Viewer, userId: string, opts: { days?: number; until?: string }, note: string) {
+export async function manualExtend(admin: Viewer, userId: string, opts: { days?: number; until?: string }, note: string) {
   if (!note.trim()) throw new HttpError(400, "ต้องใส่หมายเหตุ");
-  const s = subOf(userId);
-  if (opts.until) s.expires_at = new Date(opts.until).toISOString();
-  else s.expires_at = extendFrom(s.expires_at, opts.days ?? MEMBERSHIP_DAYS);
-  s.first_paid_at ??= nowIso();
-  s.updated_at = nowIso();
-  audit(admin.id, opts.until ? "membership.set_date" : "membership.extend", "user", userId, note);
-  notify({ user_id: userId, type: "payment", title: "ต่ออายุสมาชิกแล้ว", body: `สมาชิกถึงวันที่ ${thaiDate(s.expires_at)}`, link: "/account", image_url: null });
-  return s.expires_at;
+  const db = adminDb();
+  const { data: sub } = await db.from("subscriptions").select("expires_at, first_paid_at").eq("user_id", userId).maybeSingle();
+  const expires_at = opts.until ? new Date(opts.until).toISOString() : extendFrom(sub?.expires_at ?? null, opts.days ?? MEMBERSHIP_DAYS);
+  must(
+    await db
+      .from("subscriptions")
+      .upsert({ user_id: userId, expires_at, first_paid_at: sub?.first_paid_at ?? nowIso(), updated_at: nowIso() }, { onConflict: "user_id" }),
+    "extend",
+  );
+  await audit(admin.id, opts.until ? "membership.set_date" : "membership.extend", "user", userId, note);
+  await notify({ user_id: userId, type: "payment", title: "ต่ออายุสมาชิกแล้ว", body: `สมาชิกถึงวันที่ ${thaiDate(expires_at)}`, link: "/account", image_url: null });
+  return expires_at;
 }
 
-export function revokeMembership(admin: Viewer, userId: string, note: string) {
+export async function revokeMembership(admin: Viewer, userId: string, note: string) {
   if (!note.trim()) throw new HttpError(400, "ต้องใส่หมายเหตุ");
-  const s = subOf(userId);
-  s.expires_at = nowIso();
-  s.updated_at = nowIso();
-  audit(admin.id, "membership.revoke", "user", userId, note);
+  must(await adminDb().from("subscriptions").update({ expires_at: nowIso(), updated_at: nowIso() }).eq("user_id", userId), "revoke");
+  await audit(admin.id, "membership.revoke", "user", userId, note);
 }
 
-// ───────── Engagement ─────────
-function assertCanEngage(viewer: Viewer, contentId: string) {
-  const c = getContentRow(contentId);
+// ───────────────────────── Engagement (as the visitor, RLS applies) ─────────────────────────
+async function assertCanEngage(viewer: Viewer, contentId: string) {
+  const c = await getContentRow(contentId);
   if (!c || (!isLive(c) && !viewer.is_admin)) throw new HttpError(404, "ไม่พบคอนเทนต์");
   if (c.visibility === "members" && !viewer.is_member) throw new HttpError(403, "เฉพาะสมาชิก");
   return c;
 }
 
-export function toggleLike(viewer: Viewer, contentId: string) {
-  const c = assertCanEngage(viewer, contentId);
-  const d = db();
-  const i = d.likes.findIndex((l) => l.user_id === viewer.id && l.content_id === contentId);
-  if (i >= 0) {
-    d.likes.splice(i, 1);
-    c.like_count = Math.max(0, c.like_count - 1);
-  } else {
-    d.likes.push({ user_id: viewer.id, content_id: contentId, created_at: nowIso() });
-    c.like_count++;
-  }
-  commit();
-  return { liked: i < 0, count: c.like_count };
+export async function toggleLike(viewer: Viewer, contentId: string) {
+  await assertCanEngage(viewer, contentId);
+  const db = await userDb();
+  const { count } = await db.from("likes").select("content_id", { count: "exact", head: true }).eq("user_id", viewer.id).eq("content_id", contentId);
+  const liked = !count;
+  const res = liked
+    ? await db.from("likes").insert({ user_id: viewer.id, content_id: contentId })
+    : await db.from("likes").delete().eq("user_id", viewer.id).eq("content_id", contentId);
+  if (res.error) friendly(res.error, "เฉพาะสมาชิก");
+  const { data } = await adminDb().from("content").select("like_count").eq("id", contentId).single();
+  return { liked, count: data?.like_count ?? 0 };
 }
 
-export function toggleSave(viewer: Viewer, contentId: string, force?: boolean) {
-  const d = db();
-  const i = d.saved.findIndex((l) => l.user_id === viewer.id && l.content_id === contentId);
-  const want = force ?? i < 0;
-  if (!want && i >= 0) d.saved.splice(i, 1);
-  if (want && i < 0) d.saved.push({ user_id: viewer.id, content_id: contentId, created_at: nowIso() });
-  commit();
+export async function toggleSave(viewer: Viewer, contentId: string, force?: boolean) {
+  const db = await userDb();
+  const { count } = await db.from("saved").select("content_id", { count: "exact", head: true }).eq("user_id", viewer.id).eq("content_id", contentId);
+  const want = force ?? !count;
+  if (want && !count) {
+    await assertCanEngage(viewer, contentId);
+    const { error } = await db.from("saved").insert({ user_id: viewer.id, content_id: contentId });
+    if (error) friendly(error, "บันทึกได้เฉพาะสมาชิก");
+  }
+  if (!want && count) await db.from("saved").delete().eq("user_id", viewer.id).eq("content_id", contentId);
   return { saved: want };
 }
 
-export function saveProgress(viewer: Viewer, contentId: string, positionSec: number, duration: number) {
-  const prof = db().profiles.find((p) => p.id === viewer.id);
-  if (prof && !prof.save_history) return;
-  const c = getContentRow(contentId);
+export async function saveProgress(viewer: Viewer, contentId: string, positionSec: number, duration: number) {
+  if (!viewer.save_history || !isUuid(contentId)) return;
+  const c = await getContentRow(contentId);
   if (!c) return;
   if (c.visibility === "members" && !viewer.is_member) return;
   const dur = duration || c.duration_sec;
-  const completed = dur > 0 && positionSec / dur >= COMPLETE_RATIO;
-  const d = db();
-  const row = d.watch_progress.find((p) => p.user_id === viewer.id && p.content_id === contentId);
-  const pos = completed ? 0 : Math.floor(positionSec);
-  if (row) {
-    row.position_sec = pos;
-    row.completed = row.completed || completed;
-    row.updated_at = nowIso();
-  } else {
-    d.watch_progress.push({ user_id: viewer.id, content_id: contentId, position_sec: pos, completed, updated_at: nowIso() });
-  }
-  commit();
+  const completedNow = dur > 0 && positionSec / dur >= COMPLETE_RATIO;
+  const db = await userDb();
+  const { data: prev } = await db.from("watch_progress").select("completed").eq("user_id", viewer.id).eq("content_id", contentId).maybeSingle();
+  await db.from("watch_progress").upsert(
+    {
+      user_id: viewer.id,
+      content_id: contentId,
+      position_sec: completedNow ? 0 : Math.floor(positionSec),
+      completed: !!prev?.completed || completedNow,
+      updated_at: nowIso(),
+    },
+    { onConflict: "user_id,content_id" },
+  );
 }
 
-/** 1 view when watched ≥ 30s (or ≥ 50% for Shorts), max once per person/clip/hour. */
-export function recordView(contentId: string, userId: string | null, sessionId: string, watchedSec: number) {
-  const c = getContentRow(contentId);
+/** 1 view when watched ≥ 30s (or ≥ 50% for Grind), max once per person/clip/hour. */
+export async function recordView(contentId: string, userId: string | null, sessionId: string, watchedSec: number) {
+  const c = await getContentRow(contentId);
   if (!c || !isLive(c)) return false;
   if (watchedSec < viewThresholdSec(c.type, c.duration_sec)) return false;
-  const d = db();
-  const hourAgo = Date.now() - 3_600_000;
-  const recent = d.views.some(
-    (v) => v.content_id === contentId && (userId ? v.user_id === userId : v.session_id === sessionId) && +new Date(v.created_at) > hourAgo,
-  );
-  if (recent) return false;
-  d.views.push({ id: uid("vw-"), content_id: contentId, user_id: userId, session_id: sessionId, watched_sec: Math.floor(watchedSec), created_at: nowIso() });
-  c.view_count++;
-  commit();
-  return true;
+  const db = adminDb();
+  const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  let recent = db.from("views").select("id", { count: "exact", head: true }).eq("content_id", contentId).gt("created_at", hourAgo);
+  recent = userId ? recent.eq("user_id", userId) : recent.eq("session_id", sessionId);
+  if (((await recent).count ?? 0) > 0) return false;
+  await db.from("views").insert({ content_id: contentId, user_id: userId, session_id: sessionId.slice(0, 64), watched_sec: Math.floor(watchedSec) });
+  return true; // view_count is bumped by a database trigger
 }
 
-export function clearHistory(userId: string, contentId?: string) {
-  const d = db();
-  d.watch_progress = d.watch_progress.filter((p) => !(p.user_id === userId && (!contentId || p.content_id === contentId)));
-  commit();
+export async function clearHistory(userId: string, contentId?: string) {
+  const db = await userDb();
+  let q = db.from("watch_progress").delete().eq("user_id", userId);
+  if (contentId) q = q.eq("content_id", contentId);
+  await q;
 }
 
-// ───────── Comments ─────────
-export function createComment(viewer: Viewer, contentId: string, body: string, parentId: string | null) {
-  const c = getContentRow(contentId);
+// ───────────────────────── Comments ─────────────────────────
+export async function createComment(viewer: Viewer, contentId: string, body: string, parentId: string | null) {
+  const c = await getContentRow(contentId);
   if (!c || (!isLive(c) && !viewer.is_admin)) throw new HttpError(404, "ไม่พบคอนเทนต์");
   if (!c.comments_enabled) throw new HttpError(403, "ปิดความคิดเห็นสำหรับคลิปนี้");
   if (c.visibility === "members" && !viewer.is_member) throw new HttpError(403, "คอมเมนต์ได้เฉพาะสมาชิก");
   const text = body.trim();
   if (!text) throw new HttpError(400, "กรุณาพิมพ์ข้อความ");
   if (text.length > 1000) throw new HttpError(400, "ข้อความยาวเกิน 1,000 ตัวอักษร");
-  const banned = db().banned_words.find((w) => text.toLowerCase().includes(w.word.toLowerCase()));
-  if (banned) throw new HttpError(400, "ข้อความมีคำที่ไม่อนุญาต");
-  const d = db();
-  let parent = null as null | (typeof d.comments)[number];
+
+  let parent: { id: string; user_id: string; parent_id: string | null } | null = null;
   if (parentId) {
-    parent = d.comments.find((x) => x.id === parentId) ?? null;
-    if (!parent) throw new HttpError(404, "ไม่พบความคิดเห็น");
-    if (parent.parent_id) parent = d.comments.find((x) => x.id === parent!.parent_id)!; // one level deep
+    if (!isUuid(parentId)) throw new HttpError(404, "ไม่พบความคิดเห็น");
+    const { data } = await adminDb().from("comments").select("id, user_id, parent_id").eq("id", parentId).maybeSingle();
+    if (!data) throw new HttpError(404, "ไม่พบความคิดเห็น");
+    parent = data;
+    if (parent.parent_id) {
+      // one level deep: replying to a reply attaches to its parent
+      const { data: top } = await adminDb().from("comments").select("id, user_id, parent_id").eq("id", parent.parent_id).single();
+      parent = top;
+    }
   }
-  const row = {
-    id: uid("c-"),
-    content_id: contentId,
-    user_id: viewer.id,
-    parent_id: parent?.id ?? null,
-    body: text,
-    like_count: 0,
-    is_pinned: false,
-    creator_hearted: false,
-    is_hidden: false,
-    edited_at: null,
-    deleted_at: null,
-    created_at: nowIso(),
-  };
-  d.comments.push(row);
-  c.comment_count++;
+
+  const db = await userDb();
+  const { data: row, error } = await db
+    .from("comments")
+    .insert({ content_id: contentId, user_id: viewer.id, parent_id: parent?.id ?? null, body: text })
+    .select("*")
+    .single();
+  if (error) friendly(error, "แสดงความคิดเห็นไม่ได้");
+
   if (parent && parent.user_id !== viewer.id) {
-    notify({
+    await notify({
       user_id: parent.user_id,
       type: "reply",
       title: `${viewer.is_admin ? "JR" : viewer.display_name} ตอบกลับความคิดเห็นของคุณ`,
       body: text.slice(0, 80),
-      link: `${c.type === "podcast" ? "/podcasts" : c.type === "short" ? "/shorts" : "/watch"}/${c.id}#comments`,
+      link: `${contentHref(c)}#comments`,
       image_url: c.thumbnail_url,
     });
   }
-  commit();
-  return row;
+  return row as { id: string };
 }
 
-function ownComment(viewer: Viewer, id: string) {
-  const c = db().comments.find((x) => x.id === id && !x.deleted_at);
-  if (!c) throw new HttpError(404, "ไม่พบความคิดเห็น");
-  if (c.user_id !== viewer.id && !viewer.is_admin) throw new HttpError(403, "แก้ไขได้เฉพาะความคิดเห็นของตัวเอง");
-  return c;
-}
-
-export function editComment(viewer: Viewer, id: string, body: string) {
-  const c = db().comments.find((x) => x.id === id && !x.deleted_at);
-  if (!c || c.user_id !== viewer.id) throw new HttpError(403, "แก้ไขได้เฉพาะความคิดเห็นของตัวเอง");
+export async function editComment(viewer: Viewer, id: string, body: string) {
   const text = body.trim();
   if (!text || text.length > 1000) throw new HttpError(400, "ข้อความไม่ถูกต้อง");
-  c.body = text;
-  c.edited_at = nowIso();
-  commit();
-  return c;
+  const db = await userDb();
+  const { data, error } = await db.from("comments").update({ body: text }).eq("id", id).eq("user_id", viewer.id).select("*").maybeSingle();
+  if (error) friendly(error, "แก้ไขได้เฉพาะความคิดเห็นของตัวเอง");
+  if (!data) throw new HttpError(403, "แก้ไขได้เฉพาะความคิดเห็นของตัวเอง");
+  return data as { id: string; body: string; edited_at: string | null };
 }
 
-export function deleteComment(viewer: Viewer, id: string) {
-  const c = ownComment(viewer, id);
-  c.deleted_at = nowIso();
-  const content = getContentRow(c.content_id);
-  if (content) content.comment_count = Math.max(0, content.comment_count - 1);
-  if (viewer.is_admin && c.user_id !== viewer.id) audit(viewer.id, "comment.delete", "comment", id);
-  commit();
-}
-
-export function toggleCommentLike(viewer: Viewer, id: string) {
-  const d = db();
-  const c = d.comments.find((x) => x.id === id && !x.deleted_at);
+export async function deleteComment(viewer: Viewer, id: string) {
+  if (!isUuid(id)) throw new HttpError(404, "ไม่พบความคิดเห็น");
+  const { data: c } = await adminDb().from("comments").select("user_id").eq("id", id).is("deleted_at", null).maybeSingle();
   if (!c) throw new HttpError(404, "ไม่พบความคิดเห็น");
-  const content = getContentRow(c.content_id);
+  if (c.user_id !== viewer.id && !viewer.is_admin) throw new HttpError(403, "ลบได้เฉพาะความคิดเห็นของตัวเอง");
+  const db = await userDb(); // admin passes RLS via admin_all
+  const { error } = await db.from("comments").update({ deleted_at: nowIso() }).eq("id", id);
+  if (error) friendly(error, "ลบไม่ได้");
+  if (viewer.is_admin && c.user_id !== viewer.id) await audit(viewer.id, "comment.delete", "comment", id);
+}
+
+export async function toggleCommentLike(viewer: Viewer, id: string) {
+  if (!isUuid(id)) throw new HttpError(404, "ไม่พบความคิดเห็น");
+  const { data: c } = await adminDb().from("comments").select("content_id").eq("id", id).is("deleted_at", null).maybeSingle();
+  if (!c) throw new HttpError(404, "ไม่พบความคิดเห็น");
+  const content = await getContentRow(c.content_id);
   if (content?.visibility === "members" && !viewer.is_member) throw new HttpError(403, "เฉพาะสมาชิก");
-  const i = d.comment_likes.findIndex((l) => l.user_id === viewer.id && l.comment_id === id);
-  if (i >= 0) {
-    d.comment_likes.splice(i, 1);
-    c.like_count = Math.max(0, c.like_count - 1);
-  } else {
-    d.comment_likes.push({ user_id: viewer.id, comment_id: id });
-    c.like_count++;
-  }
-  commit();
-  return { liked: i < 0, count: c.like_count };
+  const db = await userDb();
+  const { count } = await db.from("comment_likes").select("comment_id", { count: "exact", head: true }).eq("user_id", viewer.id).eq("comment_id", id);
+  const liked = !count;
+  const res = liked
+    ? await db.from("comment_likes").insert({ user_id: viewer.id, comment_id: id })
+    : await db.from("comment_likes").delete().eq("user_id", viewer.id).eq("comment_id", id);
+  if (res.error) friendly(res.error, "ถูกใจไม่ได้");
+  const { data } = await adminDb().from("comments").select("like_count").eq("id", id).single();
+  return { liked, count: data?.like_count ?? 0 };
 }
 
-export function reportComment(viewer: Viewer, id: string, reason: string) {
-  db().comment_reports.push({ id: uid("rep-"), comment_id: id, user_id: viewer.id, reason: reason || "ไม่เหมาะสม", created_at: nowIso() });
-  commit();
+export async function reportComment(viewer: Viewer, id: string, reason: string) {
+  const db = await userDb();
+  await db.from("comment_reports").insert({ comment_id: id, user_id: viewer.id, reason: reason || "ไม่เหมาะสม" });
 }
 
-export function moderateComment(admin: Viewer, id: string, action: "pin" | "unpin" | "heart" | "unheart" | "hide" | "unhide") {
-  const d = db();
-  const c = d.comments.find((x) => x.id === id);
+export async function moderateComment(admin: Viewer, id: string, action: "pin" | "unpin" | "heart" | "unheart" | "hide" | "unhide") {
+  const db = adminDb();
+  const { data: c } = await db.from("comments").select("id, user_id, content_id, body").eq("id", id).maybeSingle();
   if (!c) throw new HttpError(404, "ไม่พบความคิดเห็น");
-  const content = getContentRow(c.content_id);
+  const content = await getContentRow(c.content_id);
+  const link = content ? `${contentHref(content)}#comments` : null;
   if (action === "pin") {
-    for (const o of d.comments) if (o.content_id === c.content_id) o.is_pinned = false;
-    c.is_pinned = true;
+    await db.from("comments").update({ is_pinned: false }).eq("content_id", c.content_id).eq("is_pinned", true);
+    await db.from("comments").update({ is_pinned: true }).eq("id", id);
     if (c.user_id !== admin.id)
-      notify({ user_id: c.user_id, type: "pin", title: "JR ปักหมุดความคิดเห็นของคุณ", body: c.body.slice(0, 80), link: `/watch/${c.content_id}#comments`, image_url: content?.thumbnail_url ?? null });
+      await notify({ user_id: c.user_id, type: "pin", title: "JR ปักหมุดความคิดเห็นของคุณ", body: c.body.slice(0, 80), link, image_url: content?.thumbnail_url ?? null });
   }
-  if (action === "unpin") c.is_pinned = false;
+  if (action === "unpin") await db.from("comments").update({ is_pinned: false }).eq("id", id);
   if (action === "heart") {
-    c.creator_hearted = true;
+    await db.from("comments").update({ creator_hearted: true }).eq("id", id);
     if (c.user_id !== admin.id)
-      notify({ user_id: c.user_id, type: "heart", title: "JR หัวใจความคิดเห็นของคุณ", body: c.body.slice(0, 80), link: `/watch/${c.content_id}#comments`, image_url: content?.thumbnail_url ?? null });
+      await notify({ user_id: c.user_id, type: "heart", title: "JR หัวใจความคิดเห็นของคุณ", body: c.body.slice(0, 80), link, image_url: content?.thumbnail_url ?? null });
   }
-  if (action === "unheart") c.creator_hearted = false;
-  if (action === "hide") c.is_hidden = true;
-  if (action === "unhide") c.is_hidden = false;
-  audit(admin.id, `comment.${action}`, "comment", id);
-  commit();
+  if (action === "unheart") await db.from("comments").update({ creator_hearted: false }).eq("id", id);
+  if (action === "hide") await db.from("comments").update({ is_hidden: true }).eq("id", id);
+  if (action === "unhide") await db.from("comments").update({ is_hidden: false }).eq("id", id);
+  await audit(admin.id, `comment.${action}`, "comment", id);
 }
 
-export function banUser(admin: Viewer, userId: string, banned = true) {
-  const p = db().profiles.find((x) => x.id === userId);
+export async function banUser(admin: Viewer, userId: string, banned = true) {
+  const db = adminDb();
+  const { data: p } = await db.from("profiles").select("role").eq("id", userId).maybeSingle();
   if (!p || p.role === "admin") throw new HttpError(400, "แบนผู้ใช้นี้ไม่ได้");
-  p.is_banned = banned;
-  audit(admin.id, banned ? "user.ban" : "user.unban", "user", userId);
-  commit();
+  await db.from("profiles").update({ is_banned: banned }).eq("id", userId);
+  await audit(admin.id, banned ? "user.ban" : "user.unban", "user", userId);
 }
 
-// ───────── Cron ─────────
-/** Every minute: publish due scheduled clips. Daily 09:00: expiry reminders. */
-export function runScheduler(now = Date.now(), withReminders = false) {
-  const d = db();
-  const published: string[] = [];
-  for (const c of d.content) {
-    if (c.status === "scheduled" && c.scheduled_at && +new Date(c.scheduled_at) <= now && c.media_status === "ready" && !c.deleted_at) {
-      c.status = "published";
-      c.published_at = c.scheduled_at;
-      published.push(c.id);
-      notifyNewContent(c);
-    }
+// ───────────────────────── Cron ─────────────────────────
+/** Every minute: publish due scheduled clips. Daily 09:00: expiry reminders. (pg_cron does the same in the DB.) */
+export async function runScheduler(withReminders = false) {
+  const db = adminDb();
+  const due = must(
+    await db.from("content").select("id").eq("status", "scheduled").eq("media_status", "ready").is("deleted_at", null).lte("scheduled_at", nowIso()),
+    "due",
+  );
+  if (due.length) {
+    must(await db.rpc("publish_due"), "publish_due");
+    revalidateTag(CATALOG_TAG);
   }
-  // Trash: soft-deleted items are purged after 30 days
-  const cutoff = now - 30 * DAY;
-  const purge = new Set(d.content.filter((c) => c.deleted_at && +new Date(c.deleted_at) < cutoff).map((c) => c.id));
-  if (purge.size) {
-    d.content = d.content.filter((c) => !purge.has(c.id));
-    d.playlist_items = d.playlist_items.filter((p) => !purge.has(p.content_id));
-  }
-  let reminded = 0;
-  if (withReminders) {
-    for (const s of d.subscriptions) {
-      const left = daysUntil(s.expires_at, now);
-      if (left > 0 && left <= 3 && isMemberUser(s.user_id, now)) {
-        notify({ user_id: s.user_id, type: "expiring", title: "สมาชิกใกล้หมดอายุ", body: `สมาชิกของคุณจะหมดอายุใน ${left} วัน`, link: "/membership", image_url: null });
-        reminded++;
-      }
-    }
-  }
-  commit();
-  return { published, reminded, purged: purge.size };
+  if (withReminders) must(await db.rpc("expiry_reminders"), "expiry_reminders");
+  const cutoff = new Date(Date.now() - 30 * DAY).toISOString();
+  const purged = must(await db.from("content").delete().lt("deleted_at", cutoff).select("id"), "purge");
+  return { published: due.map((d) => d.id), purged: purged.length, reminders: withReminders };
 }

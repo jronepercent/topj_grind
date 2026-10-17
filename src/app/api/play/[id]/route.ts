@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!rateLimit(`play:${viewer?.id ?? "anon"}:${id}`, 60, 60_000)) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });
   }
-  const c = getContentRow(id);
+  const c = await getContentRow(id);
   if (!c || (!isLive(c) && !viewer?.is_admin)) {
     return NextResponse.json({ error: "not_found" }, { status: 404, headers });
   }

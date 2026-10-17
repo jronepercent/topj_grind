@@ -11,8 +11,8 @@ export const metadata: Metadata = { title: "พอดแคสต์", descripti
 
 export default async function PodcastsPage() {
   const viewer = await getViewer();
-  const eps = listContent({ type: "podcast", limit: 200 });
-  const progress = progressMap(viewer?.id);
+  const eps = await listContent({ type: "podcast", limit: 200 });
+  const progress = await progressMap(viewer?.id);
   if (!eps.length) return <EmptyState title="ยังไม่มีพอดแคสต์" body="ตอนใหม่กำลังมา" />;
   const [latest, ...rest] = eps;
   const pct = (id: string, dur: number) => {

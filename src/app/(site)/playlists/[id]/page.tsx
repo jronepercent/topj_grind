@@ -14,7 +14,7 @@ type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { id } = await params;
-  const p = getPlaylist(id, null);
+  const p = await getPlaylist(id, null);
   if (!p) return { title: "ไม่พบ Playlist" };
   return {
     title: p.title,
@@ -26,11 +26,11 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function PlaylistPage({ params }: { params: Params }) {
   const { id } = await params;
   const viewer = await getViewer();
-  const playlist = getPlaylist(id, viewer?.id);
+  const playlist = await getPlaylist(id, viewer?.id);
   if (!playlist) notFound();
 
-  const items = playlistItems(id);
-  const progress = progressMap(viewer?.id, items.map((c) => c.id));
+  const items = await playlistItems(id);
+  const progress = await progressMap(viewer?.id, items.map((c) => c.id));
   const withList = (c: { id: string; type: string }) => `${contentHref(c)}?list=${encodeURIComponent(id)}`;
   const firstUnfinished = items.find((c) => !progress[c.id]?.completed) ?? items[0];
   const started = items.some((c) => progress[c.id]);

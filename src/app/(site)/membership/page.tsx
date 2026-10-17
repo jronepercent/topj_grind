@@ -45,12 +45,12 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   const { from: rawFrom } = await searchParams;
   const from = safePath(rawFrom);
   const viewer = await getViewer();
-  const s = siteSettings();
+  const s = await siteSettings();
   const demo = isDemoMode();
   const paymentUrl = process.env.PAYMENT_URL?.trim();
 
-  let samples = listContent({ visibility: "members", types: ["video", "podcast"], limit: 8 });
-  if (!samples.length) samples = listContent({ visibility: "members", limit: 8 });
+  let samples = await listContent({ visibility: "members", types: ["video", "podcast"], limit: 8 });
+  if (!samples.length) samples = await listContent({ visibility: "members", limit: 8 });
 
   // ── Where "ชำระเงิน" goes (built server-side) ──
   const self = `/membership${from ? `?from=${encodeURIComponent(from)}` : ""}`;

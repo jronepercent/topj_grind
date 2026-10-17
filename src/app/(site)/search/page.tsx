@@ -46,11 +46,11 @@ const PLAYLIST_GRID = "grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-c
 export default async function SearchPage({ searchParams }: { searchParams: SP }) {
   const { q, type } = parse(await searchParams);
   const viewer = await getViewer();
-  const { content, playlists } = q ? search(q, type) : { content: [], playlists: [] };
+  const { content, playlists } = q ? await search(q, type) : { content: [], playlists: [] };
   const rows = content.filter((c) => c.type !== "short");
   const shorts = content.filter((c) => c.type === "short");
   const total = content.length + playlists.length;
-  const progress = progressMap(viewer?.id, content.map((c) => c.id));
+  const progress = await progressMap(viewer?.id, content.map((c) => c.id));
 
   return (
     <div className="tg-page mx-auto max-w-[1800px] px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
@@ -127,8 +127,8 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
   );
 }
 
-function PopularBlock() {
-  const items = popular(8);
+async function PopularBlock() {
+  const items = await popular(8);
   if (!items.length) return null;
   return (
     <section className="mt-2">

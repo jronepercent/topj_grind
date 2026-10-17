@@ -1,20 +1,14 @@
-import { scryptSync, randomBytes } from "node:crypto";
-import type { DB } from "./store";
-import type { CommentRow, ContentRow, ContentType, Payment, Profile, Subscription, Visibility } from "@/lib/types";
+// Sample content for `npm run db:seed`. Plain data only — the seed script maps these
+// placeholder ids (v01, u-member, …) to real uuids when it inserts them into Supabase.
+import type { CommentRow, ContentRow, ContentType, Payment, Profile, Subscription, View, Visibility } from "../src/lib/types.ts";
 
-/** Demo accounts — password for all of them is DEMO_PASSWORD. */
-export const DEMO_PASSWORD = "demo1234";
+/** Same emails as src/lib/server/demo-accounts.ts (that file is server-only, so it can't be imported here). */
 export const DEMO_ACCOUNTS = {
-  admin: "jr@topjgrind.com",
+  admin: "admin@topjgrind.test",
   member: "member@topjgrind.test",
   expiring: "soon@topjgrind.test",
   free: "free@topjgrind.test",
-};
-
-export function hashPassword(pw: string) {
-  const salt = randomBytes(16).toString("hex");
-  return `${salt}:${scryptSync(pw, salt, 32).toString("hex")}`;
-}
+} as const;
 
 // Public demo streams (verified reachable). Real deployment uses Bunny Stream.
 const LONG_SRC = [
@@ -50,7 +44,7 @@ function desc(intro: string, chapters: [string, string][] | null, tags: string[]
   return lines.join("\n");
 }
 
-export function buildSeed(): DB {
+export function buildSeed() {
   const now = Date.now();
   const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
 
@@ -78,9 +72,8 @@ export function buildSeed(): DB {
     "ปุ้ย ณัฐชา", "ต้น ธนกร", "แพรว พิมพ์ชนก", "เจมส์ วรากร", "ฝน กมลชนก",
     "อาร์ม ศุภชัย", "นิว ปวีณา", "เบียร์ อนุชา", "มิ้นท์ ชุติมา", "โอ๊ต ภาณุ",
   ];
-  extraNames.forEach((n, i) => profiles.push(mkProfile(`u-${i + 1}`, `user${i + 1}@example.com`, n, "user", i % 3 === 0 ? `tg-u${i}` : undefined)));
+  extraNames.forEach((n, i) => profiles.push(mkProfile(`u-${i + 1}`, `user${i + 1}@topjgrind.test`, n, "user", i % 3 === 0 ? `tg-u${i}` : undefined)));
 
-  const credentials = profiles.map((p) => ({ user_id: p.id, password_hash: hashPassword(DEMO_PASSWORD) }));
 
   const subscriptions: Subscription[] = [];
   const payments: Payment[] = [];
@@ -363,7 +356,7 @@ export function buildSeed(): DB {
   ];
 
   // ~28 days of view history so Studio charts have shape
-  const views: DB["views"] = [];
+  const views: View[] = [];
   const live = content.filter((c) => c.status === "published");
   for (let day = 27; day >= 0; day--) {
     const n = 14 + ((day * 7) % 11) + (27 - day);
@@ -383,9 +376,6 @@ export function buildSeed(): DB {
 
   return {
     profiles,
-    credentials,
-    sessions: [],
-    magic_links: [],
     subscriptions,
     payments,
     payment_errors: [],
@@ -425,6 +415,5 @@ export function buildSeed(): DB {
       price_thb: Number(process.env.MEMBERSHIP_PRICE_THB ?? 300),
     },
     admin_audit_log: [],
-    rate_limits: {},
   };
 }

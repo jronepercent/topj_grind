@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { getViewer } from "@/lib/server/auth";
 import { paymentsFor } from "@/lib/server/queries";
-import { db } from "@/lib/server/store";
+import { subscriptionFor } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { daysUntil } from "@/lib/format";
@@ -37,8 +37,8 @@ export default async function AccountPage() {
 
   const cookieTheme = (await cookies()).get("tg_theme")?.value;
   const theme: ThemePref = cookieTheme === "light" || cookieTheme === "system" || cookieTheme === "dark" ? cookieTheme : viewer.theme;
-  const sub = db().subscriptions.find((s) => s.user_id === viewer.id);
-  const payments = paymentsFor(viewer.id).map((p) => ({
+  const sub = await subscriptionFor(viewer.id);
+  const payments = (await paymentsFor(viewer.id)).map((p) => ({
     id: p.id,
     paid_at: p.paid_at,
     amount: p.amount,

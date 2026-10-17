@@ -27,7 +27,7 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ list?: s
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const c = getContent(id, null);
+  const c = await getContent(id, null);
   return c ? contentMetadata(c, `/watch/${id}`) : { title: "ไม่พบคลิป" };
 }
 
@@ -35,20 +35,27 @@ export default async function WatchPage({ params, searchParams }: Props) {
   const { id } = await params;
   const { list } = await searchParams;
   const viewer = await getViewer();
-  const c = getContent(id, viewer);
+  const c = await getContent(id, viewer);
   if (!c) notFound();
   if (c.type === "short") redirect(`/shorts/${id}`);
   if (c.type === "podcast") redirect(`/podcasts/${id}`);
 
   const locked = !canWatch(viewer, c);
   const chapters = getChapters(c);
-  const p = getProgress(viewer?.id, id);
-  const pl = list ? getPlaylist(list, viewer?.id) : null;
-  const plItems = pl ? playlistItems(pl.id) : [];
+  // Independent lookups in parallel — this page's server time is the sum of the slowest, not of all.
+  const [p, pl, rel, comments, liked, saved, links, resources] = await Promise.all([
+    getProgress(viewer?.id, id),
+    list ? getPlaylist(list, viewer?.id) : Promise.resolve(null),
+    related(c, 14),
+    listComments(id, viewer, { sort: "top", limit: 20 }),
+    hasLiked(viewer?.id, id),
+    hasSaved(viewer?.id, id),
+    getLinks(id),
+    getResources(id),
+  ]);
+  const plItems = pl ? await playlistItems(pl.id) : [];
   const inList = pl && plItems.some((x) => x.id === id);
-  const rel = related(c, 14);
-  const progress = progressMap(viewer?.id, [...rel.map((r) => r.id), ...plItems.map((x) => x.id)]);
-  const comments = listComments(id, viewer, { sort: "top", limit: 20 });
+  const progress = await progressMap(viewer?.id, [...rel.map((r) => r.id), ...plItems.map((x) => x.id)]);
 
   return (
     <div className="tg-page">
@@ -72,10 +79,10 @@ export default async function WatchPage({ params, searchParams }: Props) {
         </div>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ChannelRow />
-          <ActionsBar c={c} liked={hasLiked(viewer?.id, id)} saved={hasSaved(viewer?.id, id)} />
+          <ActionsBar c={c} liked={liked} saved={saved} />
         </div>
         <div className="mt-4">
-          <DescriptionBox c={c} chapters={chapters} links={getLinks(id)} resources={getResources(id)} />
+          <DescriptionBox c={c} chapters={chapters} links={links} resources={resources} />
         </div>
         <div className="mt-6">
           <Comments contentId={id} visibility={c.visibility} enabled={c.comments_enabled} initial={comments} />

@@ -1,11 +1,20 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { adminDb, must } from "@/lib/supabase/clients";
 import { HttpError, requireAdmin } from "@/lib/server/auth";
-import { db, commit, uid, nowIso } from "@/lib/server/store";
-import { audit, finalizeIfReady, publishNow, manualExtend, notifyNewContent, revokeMembership, runScheduler } from "@/lib/server/mutations";
-import { isLive } from "@/lib/server/queries";
-import { bunnyStreamEnabled, createBunnyUpload } from "@/lib/server/bunny";
+import {
+  audit,
+  createComment,
+  finalizeIfReady,
+  manualExtend,
+  notifyNewContent,
+  publishNowPatch,
+  revokeMembership,
+  runScheduler,
+} from "@/lib/server/mutations";
+import { CATALOG_TAG, isLive, isUuid } from "@/lib/server/queries";
+import { bunnyStreamEnabled, createBunnyUpload, syncBunnyStatus } from "@/lib/server/bunny";
 import { isValidUrl } from "@/lib/richtext";
 import type { ContentRow, ContentType, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility } from "@/lib/types";
 
@@ -22,17 +31,42 @@ async function admin<T>(fn: (a: Awaited<ReturnType<typeof requireAdmin>>) => T |
   }
 }
 
+const nowIso = () => new Date().toISOString();
+
+/** Studio writes that change what visitors see: refresh the cached catalogue and every page. */
+function refreshSite(path: string = "/", type: "layout" | "page" = "layout") {
+  revalidateTag(CATALOG_TAG);
+  revalidatePath(path, type);
+}
+
 const DEMO_MEDIA: Record<ContentType, string> = {
   video: "https://test-streams.mux.dev/tos_ismc/main.m3u8",
   short: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
   podcast: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
 };
 
-function row(id: string) {
-  const c = db().content.find((x) => x.id === id);
-  if (!c) throw new HttpError(404, "ไม่พบคอนเทนต์");
-  return c;
+/** Full row (incl. trash and media locations) — server only. */
+async function row(id: string): Promise<ContentRow> {
+  if (!isUuid(id)) throw new HttpError(404, "ไม่พบคอนเทนต์");
+  const { data, error } = await adminDb().from("content").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(`content: ${error.message}`);
+  if (!data) throw new HttpError(404, "ไม่พบคอนเทนต์");
+  return data as ContentRow;
 }
+
+async function updateRow(id: string, patch: Partial<ContentRow>): Promise<ContentRow> {
+  return must(
+    await adminDb()
+      .from("content")
+      .update({ ...patch, updated_at: nowIso() })
+      .eq("id", id)
+      .select("*")
+      .single(),
+    "update content",
+  ) as ContentRow;
+}
+
+const uuids = (ids: string[]) => [...new Set(ids.filter(isUuid))];
 
 // ───────── Upload ─────────
 export interface UploadTicket {
@@ -44,80 +78,81 @@ export interface UploadTicket {
 /** Step 1 of upload: create a draft row immediately so nothing is ever lost. */
 export async function createUploadAction(input: { type: ContentType; fileName: string; width?: number; height?: number; duration?: number }) {
   return admin(async (a) => {
-    const id = uid("c-").slice(0, 14);
+    if (!["video", "short", "podcast"].includes(input.type)) throw new HttpError(400, "ประเภทไฟล์ไม่ถูกต้อง");
     const title = input.fileName.replace(/\.[^.]+$/, "").slice(0, 100);
-    const now = nowIso();
-    const c: ContentRow = {
-      id,
-      type: input.type,
-      title,
-      description: "",
-      thumbnail_url: null,
-      preview_url: null,
-      bunny_video_id: null,
-      audio_path: null,
-      demo_src: null,
-      duration_sec: Math.round(input.duration ?? 0),
-      width: input.width ?? null,
-      height: input.height ?? null,
-      visibility: "public",
-      status: "draft",
-      media_status: "uploading",
-      published_at: null,
-      scheduled_at: null,
-      category_id: null,
-      tags: [],
-      comments_enabled: true,
-      linked_content_id: null,
-      linked_start_sec: null,
-      captions_vtt: null,
-      view_count: 0,
-      like_count: 0,
-      comment_count: 0,
-      deleted_at: null,
-      created_at: now,
-      updated_at: now,
-    };
-    const ticket: UploadTicket = { id, mode: "demo" };
-    if (input.type !== "podcast" && bunnyStreamEnabled()) {
-      const tus = await createBunnyUpload(title);
-      c.bunny_video_id = tus.videoId;
-      ticket.mode = "bunny";
-      ticket.tus = tus;
-    }
-    db().content.push(c);
-    audit(a.id, "content.create", "content", id);
-    commit();
+    let tus: UploadTicket["tus"];
+    if (input.type !== "podcast" && bunnyStreamEnabled()) tus = await createBunnyUpload(title || input.fileName);
+    const created = must(
+      await adminDb()
+        .from("content")
+        .insert({
+          type: input.type,
+          title,
+          description: "",
+          duration_sec: Math.round(input.duration ?? 0),
+          width: input.width ? Math.round(input.width) : null,
+          height: input.height ? Math.round(input.height) : null,
+          visibility: "public",
+          status: "draft",
+          media_status: "uploading",
+          bunny_video_id: tus?.videoId ?? null,
+        })
+        .select("id")
+        .single(),
+      "create content",
+    ) as { id: string };
+    await audit(a.id, "content.create", "content", created.id);
+    const ticket: UploadTicket = tus ? { id: created.id, mode: "bunny", tus } : { id: created.id, mode: "demo" };
     return ticket;
   });
 }
 
-/** Called when the browser finishes uploading. Bunny mode then waits for /api/webhooks/bunny. */
+/** Called when the browser finishes uploading. Bunny mode then waits for the webhook (or status polling). */
 export async function uploadFinishedAction(id: string) {
-  return admin(() => {
-    const c = row(id);
+  return admin(async () => {
+    const c = await row(id);
+    if (c.media_status === "ready") return "ready" as MediaStatus;
     if (c.bunny_video_id) {
-      c.media_status = "processing";
+      await updateRow(id, { media_status: "processing" });
     } else {
-      // Demo mode: no real transcoder — mark ready with a sample source after a "processing" step.
-      c.media_status = "processing";
-      c.demo_src = DEMO_MEDIA[c.type];
-      if (!c.duration_sec) c.duration_sec = c.type === "short" ? 15 : c.type === "podcast" ? 420 : 734;
-      setTimeout(() => {
-        c.media_status = "ready";
-        finalizeIfReady(c);
-        commit();
-      }, 4000);
+      // No transcoder (podcasts, or Bunny not configured): a sample source, then mediaStatusAction marks it ready.
+      await updateRow(id, {
+        media_status: "processing",
+        demo_src: DEMO_MEDIA[c.type],
+        duration_sec: c.duration_sec || (c.type === "short" ? 15 : c.type === "podcast" ? 420 : 734),
+      });
     }
-    c.updated_at = nowIso();
-    commit();
-    return c.media_status as MediaStatus;
+    return "processing" as MediaStatus;
   });
 }
 
+/** processing → ready for rows without a real transcoder. Only the call that flips the status publishes/notifies. */
+async function completeDemoMedia(id: string): Promise<ContentRow | null> {
+  const { data } = await adminDb()
+    .from("content")
+    .update({ media_status: "ready", updated_at: nowIso() })
+    .eq("id", id)
+    .eq("media_status", "processing")
+    .is("bunny_video_id", null)
+    .not("demo_src", "is", null)
+    .select("*")
+    .maybeSingle();
+  if (!data) return null;
+  const c = data as ContentRow;
+  await finalizeIfReady(c);
+  revalidateTag(CATALOG_TAG);
+  return c;
+}
+
 export async function mediaStatusAction(id: string) {
-  return admin(() => {
-    const c = row(id);
+  return admin(async () => {
+    let c = await row(id);
+    if ((c.media_status === "uploading" || c.media_status === "processing") && c.bunny_video_id && bunnyStreamEnabled()) {
+      // On localhost Bunny's webhook can't reach us — polling is how uploads finish there.
+      c = await syncBunnyStatus(c);
+    } else if (c.media_status === "processing" && !c.bunny_video_id && c.demo_src) {
+      c = (await completeDemoMedia(id)) ?? (await row(id));
+    }
     return { media_status: c.media_status, status: c.status, duration_sec: c.duration_sec, thumbnail_url: c.thumbnail_url };
   });
 }
@@ -144,145 +179,183 @@ export interface ContentInput {
 
 export async function saveContentAction(id: string, input: ContentInput) {
   return admin(async (a) => {
-    const c = row(id);
-    const d = db();
+    const c = await row(id);
+    const db = adminDb();
+    const patch: Partial<ContentRow> = {};
+
     if (input.title !== undefined) {
       const t = input.title.trim();
       if (!t) throw new HttpError(400, "กรุณาใส่ชื่อ");
       if (t.length > 100) throw new HttpError(400, "ชื่อยาวเกิน 100 ตัวอักษร");
-      c.title = t;
+      patch.title = t;
     }
     if (input.description !== undefined) {
       if (input.description.length > 5000) throw new HttpError(400, "คำอธิบายยาวเกิน 5,000 ตัวอักษร");
-      c.description = input.description;
+      patch.description = input.description;
     }
-    if (input.type !== undefined) c.type = input.type;
-    if (input.thumbnail_url !== undefined) c.thumbnail_url = input.thumbnail_url;
-    if (input.category_id !== undefined) c.category_id = input.category_id;
+    if (input.type !== undefined) {
+      if (!["video", "short", "podcast"].includes(input.type)) throw new HttpError(400, "ประเภทไม่ถูกต้อง");
+      patch.type = input.type;
+    }
+    const type = patch.type ?? c.type;
+    if (input.thumbnail_url !== undefined) patch.thumbnail_url = input.thumbnail_url || null;
+    if (input.category_id !== undefined) {
+      if (input.category_id && !isUuid(input.category_id)) throw new HttpError(400, "หมวดหมู่ไม่ถูกต้อง");
+      patch.category_id = input.category_id || null;
+    }
     if (input.tags !== undefined) {
-      c.tags = [...new Set(input.tags.map((t) => t.replace(/^#/, "").trim()).filter(Boolean))].slice(0, 10);
+      patch.tags = [...new Set(input.tags.map((t) => t.replace(/^#/, "").trim()).filter(Boolean))].slice(0, 10);
     }
-    if (input.visibility !== undefined) c.visibility = input.visibility;
-    if (input.comments_enabled !== undefined) c.comments_enabled = input.comments_enabled;
-    if (input.linked_content_id !== undefined) c.linked_content_id = c.type === "short" ? input.linked_content_id : null;
-    if (input.linked_start_sec !== undefined) c.linked_start_sec = input.linked_start_sec;
-    if (input.captions_vtt !== undefined) c.captions_vtt = input.captions_vtt;
+    if (input.visibility !== undefined) {
+      if (input.visibility !== "public" && input.visibility !== "members") throw new HttpError(400, "การมองเห็นไม่ถูกต้อง");
+      patch.visibility = input.visibility;
+    }
+    if (input.comments_enabled !== undefined) patch.comments_enabled = !!input.comments_enabled;
+    if (input.linked_content_id !== undefined) {
+      const linked = type === "short" ? input.linked_content_id || null : null;
+      if (linked && (!isUuid(linked) || linked === id)) throw new HttpError(400, "คลิปที่ลิงก์ไม่ถูกต้อง");
+      patch.linked_content_id = linked;
+    }
+    if (input.linked_start_sec !== undefined) {
+      patch.linked_start_sec = input.linked_start_sec == null ? null : Math.max(0, Math.round(input.linked_start_sec));
+    }
+    if (input.captions_vtt !== undefined) patch.captions_vtt = input.captions_vtt?.trim() ? input.captions_vtt : null;
+
     if (input.links !== undefined) {
       const links = input.links.filter((l) => l.label.trim() || l.url.trim()).slice(0, 5);
-      for (const l of links) if (!isValidUrl(l.url)) throw new HttpError(400, `ลิงก์ไม่ถูกต้อง: ${l.url}`);
-      d.content_links = d.content_links.filter((l) => l.content_id !== id);
-      links.forEach((l, i) => d.content_links.push({ id: uid("lnk-"), content_id: id, label: l.label.trim(), url: l.url.trim(), position: i }));
-    }
-    if (input.resources !== undefined) {
-      const keep = input.resources;
-      d.content_resources = d.content_resources.filter((r) => r.content_id !== id);
-      keep.forEach((r, i) =>
-        d.content_resources.push({
-          id: r.id ?? uid("res-"),
-          content_id: id,
-          file_name: r.file_name,
-          storage_path: `resources/${id}/${r.file_name}`,
-          size_bytes: r.size_bytes,
-          position: i,
-        }),
-      );
-    }
-    if (input.playlist_ids !== undefined) {
-      d.playlist_items = d.playlist_items.filter((p) => p.content_id !== id || input.playlist_ids!.includes(p.playlist_id));
-      for (const pid of input.playlist_ids) {
-        if (!d.playlist_items.some((p) => p.playlist_id === pid && p.content_id === id)) {
-          const pos = d.playlist_items.filter((p) => p.playlist_id === pid).length;
-          d.playlist_items.push({ playlist_id: pid, content_id: id, position: pos });
-        }
+      for (const l of links) if (!isValidUrl(l.url.trim())) throw new HttpError(400, `ลิงก์ไม่ถูกต้อง: ${l.url}`);
+      must(await db.from("content_links").delete().eq("content_id", id), "clear links");
+      if (links.length) {
+        must(
+          await db
+            .from("content_links")
+            .insert(links.map((l, i) => ({ content_id: id, label: l.label.trim(), url: l.url.trim(), position: i }))),
+          "save links",
+        );
       }
     }
+
+    if (input.resources !== undefined) {
+      const existing = must(await db.from("content_resources").select("id").eq("content_id", id), "resources") as { id: string }[];
+      const have = new Set(existing.map((r) => r.id));
+      const keep = new Set(input.resources.map((r) => r.id).filter((rid): rid is string => !!rid && have.has(rid)));
+      const drop = [...have].filter((rid) => !keep.has(rid));
+      if (drop.length) must(await db.from("content_resources").delete().in("id", drop), "remove resources");
+      const inserts: { content_id: string; file_name: string; storage_path: string; size_bytes: number; position: number }[] = [];
+      for (const [i, r] of input.resources.entries()) {
+        const size_bytes = Math.max(0, Math.round(r.size_bytes || 0));
+        if (r.id && keep.has(r.id)) {
+          must(await db.from("content_resources").update({ file_name: r.file_name, size_bytes, position: i }).eq("id", r.id), "update resource");
+        } else {
+          inserts.push({ content_id: id, file_name: r.file_name, storage_path: `resources/${id}/${r.file_name}`, size_bytes, position: i });
+        }
+      }
+      if (inserts.length) must(await db.from("content_resources").insert(inserts), "add resources");
+    }
+
+    if (input.playlist_ids !== undefined) {
+      const want = uuids(input.playlist_ids);
+      const current = must(await db.from("playlist_items").select("playlist_id").eq("content_id", id), "playlist items") as { playlist_id: string }[];
+      const inNow = new Set(current.map((p) => p.playlist_id));
+      const remove = [...inNow].filter((pid) => !want.includes(pid));
+      if (remove.length) must(await db.from("playlist_items").delete().eq("content_id", id).in("playlist_id", remove), "leave playlists");
+      for (const pid of want.filter((p) => !inNow.has(p))) {
+        const { count } = await db.from("playlist_items").select("content_id", { count: "exact", head: true }).eq("playlist_id", pid);
+        must(await db.from("playlist_items").insert({ playlist_id: pid, content_id: id, position: count ?? 0 }), "join playlist");
+      }
+    }
+
+    const wasLive = isLive(c);
     if (input.status !== undefined) {
-      const wasLive = isLive(c);
       if (input.status === "published") {
         if (c.media_status === "ready") {
-          if (c.status !== "published") publishNow(c);
+          if (c.status !== "published") Object.assign(patch, publishNowPatch());
+          else patch.publish_when_ready = false;
         } else {
-          c.status = "draft";
-          c.scheduled_at = null;
-          c.publish_when_ready = true;
+          Object.assign(patch, { status: "draft", scheduled_at: null, publish_when_ready: true });
         }
       } else if (input.status === "scheduled") {
         if (!input.scheduled_at) throw new HttpError(400, "กรุณาเลือกเวลาเผยแพร่");
-        if (new Date(input.scheduled_at).getTime() < Date.now() - 60_000) throw new HttpError(400, "เวลาที่ตั้งต้องอยู่ในอนาคต");
-        c.status = "scheduled";
-        c.scheduled_at = new Date(input.scheduled_at).toISOString();
-        c.published_at = null;
-        c.publish_when_ready = false;
+        const at = new Date(input.scheduled_at);
+        if (Number.isNaN(at.getTime())) throw new HttpError(400, "เวลาเผยแพร่ไม่ถูกต้อง");
+        if (at.getTime() < Date.now() - 60_000) throw new HttpError(400, "เวลาที่ตั้งต้องอยู่ในอนาคต");
+        Object.assign(patch, { status: "scheduled", scheduled_at: at.toISOString(), published_at: null, publish_when_ready: false });
       } else {
-        c.status = "draft";
-        c.published_at = null;
-        c.scheduled_at = null;
-        c.publish_when_ready = false;
+        Object.assign(patch, { status: "draft", published_at: null, scheduled_at: null, publish_when_ready: false });
       }
-      if (!wasLive && isLive(c)) notifyNewContent(c);
-      audit(a.id, `content.${input.status}`, "content", id);
     }
-    c.updated_at = nowIso();
-    commit();
+
+    const next = await updateRow(id, patch);
+    if (input.status !== undefined) {
+      if (!wasLive && isLive(next)) await notifyNewContent(next);
+      await audit(a.id, `content.${input.status}`, "content", id);
+    }
     // Autosaves of drafts don't touch the public site — only revalidate when it matters.
-    if (input.status !== undefined || isLive(c)) revalidatePath("/", "layout");
-    return { updated_at: c.updated_at, status: c.status, media_status: c.media_status };
+    if (input.status !== undefined || wasLive || isLive(next) || next.status === "scheduled") refreshSite();
+    return { updated_at: next.updated_at, status: next.status, media_status: next.media_status };
   });
 }
 
 export async function bulkContentAction(ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft") {
-  return admin((a) => {
-    const d = db();
-    for (const id of ids) {
-      const c = d.content.find((x) => x.id === id);
-      if (!c) continue;
-      if (op === "public" || op === "members") c.visibility = op;
-      if (op === "draft") {
-        c.status = "draft";
-        c.published_at = null;
-      }
-      if (op === "delete") c.deleted_at = nowIso();
-      if (op === "restore") c.deleted_at = null;
-      c.updated_at = nowIso();
-      audit(a.id, `content.${op}`, "content", id);
+  return admin(async (a) => {
+    const list = uuids(ids);
+    if (!list.length) return;
+    const db = adminDb();
+    const now = nowIso();
+    if (op === "public" || op === "members") {
+      must(await db.from("content").update({ visibility: op, updated_at: now }).in("id", list), "visibility");
+    } else if (op === "draft") {
+      must(await db.from("content").update({ status: "draft", published_at: null, updated_at: now }).in("id", list), "draft");
+    } else if (op === "delete") {
+      must(await db.from("content").update({ deleted_at: now, updated_at: now }).in("id", list), "trash");
+    } else if (op === "restore") {
+      must(await db.from("content").update({ deleted_at: null, updated_at: now }).in("id", list), "restore");
+    } else if (op === "purge") {
+      // Only rows already in the trash. Links, playlist items, comments… go with them (on delete cascade).
+      must(await db.from("content").delete().in("id", list).not("deleted_at", "is", null), "purge");
+    } else {
+      throw new HttpError(400, "คำสั่งไม่ถูกต้อง");
     }
-    if (op === "purge") {
-      d.content = d.content.filter((c) => !(ids.includes(c.id) && c.deleted_at));
-      d.playlist_items = d.playlist_items.filter((p) => !ids.includes(p.content_id));
-    }
-    commit();
-    revalidatePath("/", "layout");
+    await Promise.all(list.map((id) => audit(a.id, `content.${op}`, "content", id)));
+    refreshSite();
   });
 }
 
 // ───────── Playlists ─────────
 export async function listPlaylistsAction(contentIds: string[] = []) {
-  return admin(() =>
-    [...db().playlists]
-      .sort((a, b) => a.position - b.position)
-      .map((p) => ({
-        id: p.id,
-        title: p.title,
-        visibility: p.visibility,
-        containsAll: contentIds.length > 0 && contentIds.every((cid) => db().playlist_items.some((i) => i.playlist_id === p.id && i.content_id === cid)),
-      })),
-  );
+  return admin(async () => {
+    const db = adminDb();
+    const ids = uuids(contentIds);
+    const [pls, items] = await Promise.all([
+      db.from("playlists").select("id, title, visibility, position").order("position"),
+      ids.length ? db.from("playlist_items").select("playlist_id, content_id").in("content_id", ids) : Promise.resolve({ data: [], error: null }),
+    ]);
+    const playlists = must(pls, "playlists") as { id: string; title: string; visibility: Visibility }[];
+    const pairs = new Set((must(items, "playlist items") as { playlist_id: string; content_id: string }[]).map((i) => `${i.playlist_id}:${i.content_id}`));
+    return playlists.map((p) => ({
+      id: p.id,
+      title: p.title,
+      visibility: p.visibility,
+      containsAll: ids.length > 0 && ids.every((cid) => pairs.has(`${p.id}:${cid}`)),
+    }));
+  });
 }
 
 export async function setPlaylistMembershipAction(playlistId: string, contentIds: string[], include: boolean) {
-  return admin(() => {
-    const d = db();
+  return admin(async () => {
+    if (!isUuid(playlistId)) throw new HttpError(404, "ไม่พบ Playlist");
+    const db = adminDb();
+    const ids = uuids(contentIds);
+    if (!ids.length) return;
     if (include) {
-      for (const cid of contentIds) {
-        if (d.playlist_items.some((i) => i.playlist_id === playlistId && i.content_id === cid)) continue;
-        const pos = d.playlist_items.filter((i) => i.playlist_id === playlistId).length;
-        d.playlist_items.push({ playlist_id: playlistId, content_id: cid, position: pos });
-      }
+      const items = must(await db.from("playlist_items").select("content_id").eq("playlist_id", playlistId), "playlist items") as { content_id: string }[];
+      const have = new Set(items.map((i) => i.content_id));
+      const add = ids.filter((cid) => !have.has(cid)).map((cid, i) => ({ playlist_id: playlistId, content_id: cid, position: items.length + i }));
+      if (add.length) must(await db.from("playlist_items").insert(add), "add to playlist");
     } else {
-      d.playlist_items = d.playlist_items.filter((i) => !(i.playlist_id === playlistId && contentIds.includes(i.content_id)));
+      must(await db.from("playlist_items").delete().eq("playlist_id", playlistId).in("content_id", ids), "remove from playlist");
     }
-    commit();
-    revalidatePath("/", "layout");
+    refreshSite();
   });
 }
 
@@ -296,129 +369,223 @@ export interface PlaylistInput {
 }
 
 export async function savePlaylistAction(id: string | null, input: PlaylistInput) {
-  return admin((a) => {
-    const d = db();
-    if (!input.title.trim()) throw new HttpError(400, "กรุณาใส่ชื่อ Playlist");
-    let p = id ? d.playlists.find((x) => x.id === id) : undefined;
-    if (!p) {
-      p = { id: uid("pl-").slice(0, 15), title: "", description: "", thumbnail_url: null, visibility: "public", is_course: false, position: d.playlists.length, created_at: nowIso() };
-      d.playlists.push(p);
+  return admin(async (a) => {
+    const db = adminDb();
+    const title = input.title.trim();
+    if (!title) throw new HttpError(400, "กรุณาใส่ชื่อ Playlist");
+    const fields = {
+      title,
+      description: input.description ?? "",
+      thumbnail_url: input.thumbnail_url || null,
+      visibility: input.visibility === "members" ? "members" : "public",
+      is_course: !!input.is_course,
+    };
+    let pid: string | null = null;
+    if (id && isUuid(id)) {
+      const { data } = await db.from("playlists").update(fields).eq("id", id).select("id").maybeSingle();
+      pid = (data as { id: string } | null)?.id ?? null;
     }
-    p.title = input.title.trim();
-    p.description = input.description;
-    p.thumbnail_url = input.thumbnail_url;
-    p.visibility = input.visibility;
-    p.is_course = input.is_course;
-    d.playlist_items = d.playlist_items.filter((i) => i.playlist_id !== p!.id);
-    input.content_ids.forEach((cid, i) => d.playlist_items.push({ playlist_id: p!.id, content_id: cid, position: i }));
-    audit(a.id, id ? "playlist.update" : "playlist.create", "playlist", p.id);
-    commit();
-    revalidatePath("/", "layout");
-    return p.id;
+    const created = !pid;
+    if (!pid) {
+      const { count } = await db.from("playlists").select("id", { count: "exact", head: true });
+      pid = (must(await db.from("playlists").insert({ ...fields, position: count ?? 0 }).select("id").single(), "create playlist") as { id: string }).id;
+    }
+    must(await db.from("playlist_items").delete().eq("playlist_id", pid), "clear playlist");
+    const items = uuids(input.content_ids).map((cid, i) => ({ playlist_id: pid!, content_id: cid, position: i }));
+    if (items.length) must(await db.from("playlist_items").insert(items), "save playlist items");
+    await audit(a.id, created ? "playlist.create" : "playlist.update", "playlist", pid);
+    refreshSite();
+    return pid;
   });
 }
 
 export async function deletePlaylistAction(id: string) {
-  return admin((a) => {
-    const d = db();
-    d.playlists = d.playlists.filter((p) => p.id !== id);
-    d.playlist_items = d.playlist_items.filter((i) => i.playlist_id !== id);
-    audit(a.id, "playlist.delete", "playlist", id);
-    commit();
-    revalidatePath("/", "layout");
+  return admin(async (a) => {
+    if (!isUuid(id)) throw new HttpError(404, "ไม่พบ Playlist");
+    must(await adminDb().from("playlists").delete().eq("id", id), "delete playlist"); // items cascade
+    await audit(a.id, "playlist.delete", "playlist", id);
+    refreshSite();
   });
 }
 
 export async function reorderPlaylistsAction(ids: string[]) {
-  return admin(() => {
-    ids.forEach((id, i) => {
-      const p = db().playlists.find((x) => x.id === id);
-      if (p) p.position = i;
-    });
-    commit();
-    revalidatePath("/", "layout");
+  return admin(async () => {
+    const db = adminDb();
+    const results = await Promise.all(uuids(ids).map((id, i) => db.from("playlists").update({ position: i }).eq("id", id)));
+    for (const r of results) must(r, "reorder playlists");
+    refreshSite();
   });
 }
 
 // ───────── Home curation ─────────
 export async function saveHomeSectionsAction(sections: Pick<HomeSection, "id" | "type" | "title" | "content_ids" | "enabled">[]) {
-  return admin((a) => {
+  return admin(async (a) => {
     const hero = sections.find((s) => s.type === "hero");
     if (hero && hero.content_ids.length > 5) throw new HttpError(400, "Hero เลือกได้สูงสุด 5 รายการ");
-    db().home_sections = sections.map((s, i) => ({ ...s, id: s.id || uid("hs-"), position: i }));
-    audit(a.id, "home.update", "home", "home");
-    commit();
+    const db = adminDb();
+    const rows = sections.map((s, i) => ({
+      ...(s.id && isUuid(s.id) ? { id: s.id } : {}),
+      type: s.type,
+      title: s.title ?? "",
+      content_ids: uuids(s.content_ids ?? []),
+      enabled: !!s.enabled,
+      position: i,
+    }));
+    // Write the new set first, then drop whatever isn't in it — the Home page is never left empty on an error.
+    const keep: string[] = [];
+    const withId = rows.filter((r) => "id" in r);
+    const fresh = rows.filter((r) => !("id" in r));
+    if (withId.length) {
+      const saved = must(await db.from("home_sections").upsert(withId, { onConflict: "id" }).select("id"), "save home sections") as { id: string }[];
+      keep.push(...saved.map((r) => r.id));
+    }
+    if (fresh.length) {
+      const saved = must(await db.from("home_sections").insert(fresh).select("id"), "add home sections") as { id: string }[];
+      keep.push(...saved.map((r) => r.id));
+    }
+    let del = db.from("home_sections").delete();
+    del = keep.length ? del.not("id", "in", `(${keep.join(",")})`) : del.not("id", "is", null);
+    must(await del, "remove home sections");
+    await audit(a.id, "home.update", "home", "home");
+    revalidateTag(CATALOG_TAG);
     revalidatePath("/");
   });
 }
 
 // ───────── Settings ─────────
+const SETTING_KEYS: (keyof SiteSettings)[] = [
+  "channel_name",
+  "tagline",
+  "about",
+  "avatar_url",
+  "banner_url",
+  "socials",
+  "paywall_title",
+  "paywall_benefits",
+  "price_thb",
+];
+
 export async function saveSettingsAction(input: Partial<SiteSettings>) {
-  return admin((a) => {
-    const s = db().site_settings;
-    Object.assign(s, input);
-    audit(a.id, "settings.update", "settings", "site");
-    commit();
-    revalidatePath("/", "layout");
+  return admin(async (a) => {
+    const db = adminDb();
+    const { data, error } = await db.from("site_settings").select("value").eq("key", "site").maybeSingle();
+    if (error) throw new Error(`settings: ${error.message}`);
+    const value: Record<string, unknown> = { ...((data?.value as Record<string, unknown>) ?? {}) };
+    for (const k of SETTING_KEYS) if (input[k] !== undefined) value[k] = input[k];
+    must(await db.from("site_settings").upsert({ key: "site", value }, { onConflict: "key" }), "save settings");
+    await audit(a.id, "settings.update", "settings", "site");
+    refreshSite();
   });
 }
 
+const slugify = (name: string) => name.trim().toLowerCase().replace(/\s+/g, "-");
+
 export async function saveCategoriesAction(cats: { id?: string; name: string }[]) {
-  return admin(() => {
-    db().categories = cats
+  return admin(async () => {
+    const db = adminDb();
+    const existing = must(await db.from("categories").select("id, slug"), "categories") as { id: string; slug: string }[];
+    const existingIds = new Set(existing.map((c) => c.id));
+    const idBySlug = new Map(existing.map((c) => [c.slug, c.id]));
+
+    const seen = new Set<string>();
+    const wanted = cats
       .filter((c) => c.name.trim())
-      .map((c, i) => ({
-        id: c.id ?? uid("cat-").slice(0, 16),
-        name: c.name.trim(),
-        slug: c.name.trim().toLowerCase().replace(/\s+/g, "-"),
-        position: i,
-      }));
-    commit();
-    revalidatePath("/", "layout");
+      .map((c, i) => {
+        const name = c.name.trim();
+        const base = slugify(name);
+        let slug = base;
+        for (let n = 2; seen.has(slug); n++) slug = `${base}-${n}`;
+        seen.add(slug);
+        return { id: c.id && existingIds.has(c.id) ? c.id : undefined, name, slug, position: i };
+      });
+    // A new row whose name matches an existing category keeps that category (and the clips filed under it).
+    const used = new Set(wanted.map((w) => w.id).filter(Boolean));
+    for (const w of wanted) {
+      if (w.id) continue;
+      const match = idBySlug.get(w.slug);
+      if (match && !used.has(match)) {
+        w.id = match;
+        used.add(match);
+      }
+    }
+
+    // Removed categories go first (content.category_id → null via on delete set null).
+    const remove = existing.filter((c) => !used.has(c.id)).map((c) => c.id);
+    if (remove.length) must(await db.from("categories").delete().in("id", remove), "remove categories");
+
+    const kept = wanted.filter((w): w is typeof w & { id: string } => !!w.id);
+    const slugOf = new Map(existing.map((c) => [c.id, c.slug]));
+    // Renames can swap slugs (unique) — park changed ones on a temporary slug first.
+    const renamed = kept.filter((w) => slugOf.get(w.id) !== w.slug);
+    for (const w of renamed) must(await db.from("categories").update({ slug: `tmp-${w.id}` }).eq("id", w.id), "rename categories");
+    if (kept.length) must(await db.from("categories").upsert(kept, { onConflict: "id" }), "save categories");
+
+    const fresh = wanted.filter((w) => !w.id).map(({ name, slug, position }) => ({ name, slug, position }));
+    if (fresh.length) must(await db.from("categories").insert(fresh), "add categories");
+    refreshSite();
   });
 }
 
 export async function saveBannedWordsAction(words: string[]) {
-  return admin(() => {
-    db().banned_words = [...new Set(words.map((w) => w.trim()).filter(Boolean))].map((word) => ({ id: uid("bw-"), word }));
-    commit();
+  return admin(async () => {
+    const db = adminDb();
+    const want = [...new Set(words.map((w) => w.trim()).filter(Boolean))];
+    const existing = must(await db.from("banned_words").select("id, word"), "banned words") as { id: string; word: string }[];
+    const drop = existing.filter((w) => !want.includes(w.word)).map((w) => w.id);
+    if (drop.length) must(await db.from("banned_words").delete().in("id", drop), "remove banned words");
+    const have = new Set(existing.map((w) => w.word));
+    const add = want.filter((w) => !have.has(w)).map((word) => ({ word }));
+    if (add.length) must(await db.from("banned_words").upsert(add, { onConflict: "word", ignoreDuplicates: true }), "add banned words");
   });
 }
 
 // ───────── Members ─────────
 export async function extendMemberAction(userId: string, opts: { days?: number; until?: string }, note: string) {
-  return admin((a) => {
-    const exp = manualExtend({ ...a }, userId, opts, note);
+  return admin(async (a) => {
+    if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
+    if (opts.until && Number.isNaN(new Date(opts.until).getTime())) throw new HttpError(400, "วันที่ไม่ถูกต้อง");
+    const exp = await manualExtend(a, userId, opts, note);
     revalidatePath("/studio/members");
     return exp;
   });
 }
 
 export async function revokeMemberAction(userId: string, note: string) {
-  return admin((a) => {
-    revokeMembership(a, userId, note);
+  return admin(async (a) => {
+    if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
+    await revokeMembership(a, userId, note);
     revalidatePath("/studio/members");
   });
 }
 
 export async function resolvePaymentErrorAction(id: string) {
-  return admin(() => {
-    const e = db().payment_errors.find((x) => x.id === id);
-    if (e) e.resolved = true;
-    commit();
+  return admin(async () => {
+    if (!isUuid(id)) throw new HttpError(404, "ไม่พบรายการ");
+    must(await adminDb().from("payment_errors").update({ resolved: true }).eq("id", id), "resolve payment error");
     revalidatePath("/studio/members");
   });
 }
 
-// ───────── Demo helpers ─────────
+// ───────── Scheduler / comments ─────────
 export async function runSchedulerAction() {
-  return admin(() => runScheduler(Date.now(), true));
+  return admin(async () => {
+    // expiry_reminders() notifies everyone whose membership ends within 3 days — count them for the summary.
+    const now = Date.now();
+    const { count } = await adminDb()
+      .from("subscriptions")
+      .select("user_id", { count: "exact", head: true })
+      .gt("expires_at", new Date(now).toISOString())
+      .lte("expires_at", new Date(now + 3 * 86_400_000).toISOString());
+    const r = await runScheduler(true);
+    if (r.published.length || r.purged) revalidatePath("/", "layout");
+    return { published: r.published as string[], reminded: count ?? 0 };
+  });
 }
 
 export async function replyAsCreatorAction(contentId: string, parentId: string, body: string) {
-  const { createComment } = await import("@/lib/server/mutations");
-  return admin((a) => {
-    createComment(a, contentId, body, parentId);
+  return admin(async (a) => {
+    if (!isUuid(contentId) || !isUuid(parentId)) throw new HttpError(404, "ไม่พบความคิดเห็น");
+    await createComment(a, contentId, body, parentId);
     revalidatePath("/studio/comments");
   });
 }
@@ -426,13 +593,13 @@ export async function replyAsCreatorAction(contentId: string, parentId: string, 
 // ───────── Studio additions ─────────
 /** 📊 Stats dialog on /studio/content: totals + views per Bangkok day for 28 days. */
 export async function contentStatsAction(id: string) {
-  const { dailyViews } = await import("./_lib/data");
-  return admin(() => {
-    const c = row(id);
-    const daily = dailyViews(28, id);
-    const watchedSec = db()
-      .views.filter((v) => v.content_id === id && Date.now() - new Date(v.created_at).getTime() <= 28 * 86_400_000)
-      .reduce((s, v) => s + v.watched_sec, 0);
+  const { dailyFromViews, recentViews } = await import("./_lib/data");
+  return admin(async () => {
+    const c = await row(id);
+    const now = Date.now();
+    const views = await recentViews(28, id, now);
+    const daily = dailyFromViews(views, 28, now);
+    const watchedSec = views.reduce((s, v) => s + (v.watched_sec || 0), 0);
     return {
       title: c.title,
       view_count: c.view_count,
@@ -448,20 +615,14 @@ export async function contentStatsAction(id: string) {
 /** "ล้มเหลว — อัปโหลดใหม่": issue a fresh upload ticket for an existing row (keeps all details). */
 export async function reuploadAction(id: string) {
   return admin(async (a) => {
-    const c = row(id);
-    const ticket: UploadTicket = { id, mode: "demo" };
-    c.media_status = "uploading";
-    c.demo_src = null;
-    c.bunny_video_id = null;
-    if (c.type !== "podcast" && bunnyStreamEnabled()) {
-      const tus = await createBunnyUpload(c.title);
-      c.bunny_video_id = tus.videoId;
-      ticket.mode = "bunny";
-      ticket.tus = tus;
-    }
-    c.updated_at = nowIso();
-    audit(a.id, "content.reupload", "content", id);
-    commit();
+    const c = await row(id);
+    let tus: UploadTicket["tus"];
+    if (c.type !== "podcast" && bunnyStreamEnabled()) tus = await createBunnyUpload(c.title || "untitled");
+    const wasLive = isLive(c);
+    await updateRow(id, { media_status: "uploading", demo_src: null, bunny_video_id: tus?.videoId ?? null });
+    await audit(a.id, "content.reupload", "content", id);
+    if (wasLive) refreshSite();
+    const ticket: UploadTicket = tus ? { id, mode: "bunny", tus } : { id, mode: "demo" };
     return ticket;
   });
 }

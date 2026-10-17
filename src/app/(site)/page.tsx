@@ -18,17 +18,24 @@ import { SectionHeader } from "@/components/ui/misc";
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
   const viewer = await getViewer();
-  const sections = homeSections().filter((s) => s.enabled);
-  const progress = progressMap(viewer?.id);
+  const sections = (await homeSections()).filter((s) => s.enabled);
   const hero = sections.find((s) => s.type === "hero");
-  const heroItems = hero ? getContentsByIds(hero.content_ids).slice(0, 5) : [];
-
-  const latest = listContent({ type: "video", limit: 8 });
-  const shorts = listContent({ type: "short", limit: 12 });
-  const podcasts = listContent({ type: "podcast", limit: 12 });
-  const playlists = playlistsWithMeta(viewer?.id);
-  const cont = continueWatching(viewer?.id);
-  const more = listContent({ types: ["video", "podcast"], exclude: latest.map((c) => c.id), limit: 24 });
+  const custom = sections.filter((s) => s.type === "custom");
+  // Everything below is independent — fetch in parallel.
+  const [progress, heroAll, latest, shorts, podcasts, playlists, cont, customLists, cats] = await Promise.all([
+    progressMap(viewer?.id),
+    hero ? getContentsByIds(hero.content_ids) : Promise.resolve([]),
+    listContent({ type: "video", limit: 8 }),
+    listContent({ type: "short", limit: 12 }),
+    listContent({ type: "podcast", limit: 12 }),
+    playlistsWithMeta(viewer?.id),
+    continueWatching(viewer?.id),
+    Promise.all(custom.map((s) => getContentsByIds(s.content_ids))),
+    categories(),
+  ]);
+  const heroItems = heroAll.slice(0, 5);
+  const customItems = new Map(custom.map((s, i) => [s.id, customLists[i]]));
+  const more = await listContent({ types: ["video", "podcast"], exclude: latest.map((c) => c.id), limit: 24 });
 
   const more_link = (href: string) => (
     <Link href={href} className="text-[14px] font-medium text-text-2 hover:text-text">
@@ -78,7 +85,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </Shelf>
           ) : null;
         case "custom": {
-          const items = getContentsByIds(s.content_ids);
+          const items = customItems.get(s.id) ?? [];
           return items.length ? (
             <Shelf key={s.id} title={s.title} itemClass="w-[78vw] sm:w-[300px]">
               {items.map((c) =>
@@ -97,7 +104,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div className="tg-page">
       <Hero items={heroItems} />
       <div className="mx-auto max-w-[1800px] px-4 sm:px-6 lg:px-8">
-        <HomeFeed categories={categories()} initialFilter={filter} progress={progress}>
+        <HomeFeed categories={cats} initialFilter={filter} progress={progress}>
           <div className="space-y-12">
             {blocks}
             {more.length > 0 && (

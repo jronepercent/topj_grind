@@ -10,7 +10,7 @@ export default async function StudioCommentsPage({ searchParams }: { searchParam
   return (
     <div>
       <PageHeader title="ความคิดเห็น" description="ความคิดเห็นจากทุกคลิปรวมไว้ที่เดียว ตอบกลับ ปักหมุด ซ่อน หรือแบนได้ทันที" />
-      <CommentsInbox comments={studioComments()} initialTab={initialTab} />
+      <CommentsInbox comments={await studioComments()} initialTab={initialTab} />
     </div>
   );
 }

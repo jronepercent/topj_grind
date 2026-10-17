@@ -7,8 +7,8 @@ import { contentHref } from "@/lib/format";
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
 
 /** Public content only. */
-export default function sitemap(): MetadataRoute.Sitemap {
-  const content = listContent({ visibility: "public", limit: 5000 });
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const content = await listContent({ visibility: "public", limit: 5000 });
   return [
     { url: `${SITE}/`, changeFrequency: "daily", priority: 1 },
     { url: `${SITE}/shorts`, changeFrequency: "daily" },
@@ -16,7 +16,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE}/about`, changeFrequency: "monthly" },
     { url: `${SITE}/membership`, changeFrequency: "monthly" },
     ...content.map((c) => ({ url: `${SITE}${contentHref(c)}`, lastModified: c.updated_at })),
-    ...playlistsWithMeta(null)
+    ...(await playlistsWithMeta(null))
       .filter((p) => p.visibility === "public")
       .map((p) => ({ url: `${SITE}/playlists/${p.id}` })),
   ];

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
   const status = req.nextUrl.searchParams.get("status") ?? "all";
   const now = Date.now();
-  const rows = memberRows(now).filter(
+  const rows = (await memberRows(now)).filter(
     (r) =>
       (status === "all" || r.status === status) &&
       (!q || r.display_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)),

@@ -147,7 +147,11 @@
 - ✅ Migration `0001_init.sql` รันบน Supabase แล้ว: 23 ตาราง RLS ครบ · cron 3 งาน · bucket `thumbnails` (public) + `resources` (private)
   - แก้ก่อนรัน: สิทธิ์ (GRANT) เขียนเองทั้งหมด เพราะปิด auto-expose · helper `content_visible / can_engage / can_comment` แทนการอ่านทั้งแถว · `tags_text()` ให้ search column เป็น immutable · ลำดับ trigger · `pg_trgm` อยู่ใน schema `extensions`
 - ✅ `npm run db:migrate` (มี `--dry-run`) · `npm run db:test-rls` → **23/23 ผ่าน** ใน transaction ที่ rollback (ไม่มีข้อมูลค้าง)
-- ⏳ ต่อไป: ย้าย `queries / mutations / auth` จาก store เดโมไป Supabase + ทำหน้า public เป็น static/ISR
+- ✅ **ย้ายชั้นข้อมูลไป Supabase แล้ว (2026-10-17)** — ลบ store เดโมทิ้ง · Supabase Auth (รหัสผ่าน, magic link, ลืมรหัส, `/auth/callback`) · catalogue cache 30 วิ ล้างทันทีเมื่อ Studio แก้ · หน้าแรก/หน้าดูคลิปดึงข้อมูลพร้อมกัน · Studio ย้ายครบ (agent)
+  - migrations 0002–0006: `captions_vtt`, `demo_src`, `member_no`, `user_id_by_email()`, สิทธิ์ service role, กันคอมเมนต์ยกเว้นเซิร์ฟเวอร์
+  - เจอและแก้ระหว่างทาง: service role ไม่มีสิทธิ์ตารางเลย (เพราะปิด auto-expose) · trigger กันคอมเมนต์บล็อกการปักหมุดของ JR
+  - ทดสอบจริง: ล็อกอินบัญชีทดลอง, ไลก์/คอมเมนต์ลง DB + ตัวนับ, Studio Dashboard/คอนเทนต์/สมาชิก · `db:test-rls` 24/24 · `next build` ผ่าน
+- ⏳ ต่อไป: หน้า public เป็น static/ISR (ย้ายข้อมูลส่วนตัวไปโหลดฝั่ง client) · ตั้ง SMTP · deploy Vercel · วัด Lighthouse บน Vercel
 
 ## 4.2 Concept — เฟส 1 (2026-10-17)
 

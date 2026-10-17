@@ -8,7 +8,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const c = getContent(id, null);
+  const c = await getContent(id, null);
   return c ? contentMetadata(c, `/shorts/${id}`) : { title: "Shorts" };
 }
 
