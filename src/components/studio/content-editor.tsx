@@ -42,7 +42,7 @@ import {
   isoToBkkInput,
   MediaStrip,
   mmssToSec,
-  readAsDataUrl,
+  uploadImageFile,
   secToMmss,
   TagInput,
   useMediaPhase,
@@ -470,7 +470,7 @@ function StepDetails({
         <LinksEditor links={form.links} onChange={(v) => set("links", v)} />
       </Section>
 
-      <Section title="ภาพปก" description={`แนะนำ ${COVER_SIZE[form.type]} พิกเซล · JPG, PNG หรือ WebP ไม่เกิน 2MB`}>
+      <Section title="ภาพปก" description={`แนะนำ ${COVER_SIZE[form.type]} พิกเซล · JPG, PNG หรือ WebP`}>
         <CoverPicker form={form} set={set} options={options} data={data} />
       </Section>
 
@@ -682,15 +682,13 @@ function CoverPicker({
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
-      toast("รองรับเฉพาะ JPG, PNG หรือ WebP");
+    let url: string;
+    try {
+      url = await uploadImageFile(f, "content");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ");
       return;
     }
-    if (f.size > 2 * 1024 * 1024) {
-      toast(`ไฟล์ใหญ่เกิน 2MB (${formatBytes(f.size)})`);
-      return;
-    }
-    const url = await readAsDataUrl(f);
     set("thumbnail_url", url);
     const { w, h } = await imageSize(url).catch(() => ({ w: 0, h: 0 }));
     const want = COVER_RATIO[form.type];

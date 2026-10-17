@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/mutations";
 import { CATALOG_TAG, isLive, isUuid } from "@/lib/server/queries";
 import { bunnyStreamEnabled, createBunnyUpload, syncBunnyStatus } from "@/lib/server/bunny";
+import { signImageUpload, storeImage } from "@/lib/server/images";
 import { isValidUrl } from "@/lib/richtext";
 import type { ContentRow, ContentType, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility } from "@/lib/types";
 
@@ -157,6 +158,14 @@ export async function mediaStatusAction(id: string) {
   });
 }
 
+// ───────── Images (covers, channel art) ─────────
+export async function imageUploadAction(folder: "content" | "playlists" | "channel", contentType: string) {
+  return admin(() => {
+    if (!["content", "playlists", "channel"].includes(folder)) throw new HttpError(400, "ปลายทางไม่ถูกต้อง");
+    return signImageUpload(folder, contentType);
+  });
+}
+
 // ───────── Save (autosave + publish) ─────────
 export interface ContentInput {
   title?: string;
@@ -198,7 +207,7 @@ export async function saveContentAction(id: string, input: ContentInput) {
       patch.type = input.type;
     }
     const type = patch.type ?? c.type;
-    if (input.thumbnail_url !== undefined) patch.thumbnail_url = input.thumbnail_url || null;
+    if (input.thumbnail_url !== undefined) patch.thumbnail_url = await storeImage(input.thumbnail_url, `content/${id}`);
     if (input.category_id !== undefined) {
       if (input.category_id && !isUuid(input.category_id)) throw new HttpError(400, "หมวดหมู่ไม่ถูกต้อง");
       patch.category_id = input.category_id || null;
@@ -376,7 +385,7 @@ export async function savePlaylistAction(id: string | null, input: PlaylistInput
     const fields = {
       title,
       description: input.description ?? "",
-      thumbnail_url: input.thumbnail_url || null,
+      thumbnail_url: await storeImage(input.thumbnail_url, "playlists"),
       visibility: input.visibility === "members" ? "members" : "public",
       is_course: !!input.is_course,
     };
@@ -472,6 +481,9 @@ export async function saveSettingsAction(input: Partial<SiteSettings>) {
     if (error) throw new Error(`settings: ${error.message}`);
     const value: Record<string, unknown> = { ...((data?.value as Record<string, unknown>) ?? {}) };
     for (const k of SETTING_KEYS) if (input[k] !== undefined) value[k] = input[k];
+    for (const k of ["avatar_url", "banner_url"] as const) {
+      if (input[k] !== undefined) value[k] = (await storeImage(input[k], "channel")) ?? "";
+    }
     must(await db.from("site_settings").upsert({ key: "site", value }, { onConflict: "key" }), "save settings");
     await audit(a.id, "settings.update", "settings", "site");
     refreshSite();

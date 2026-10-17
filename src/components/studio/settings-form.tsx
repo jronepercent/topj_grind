@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import type { SiteSettings } from "@/lib/types";
 import { SortableItem, SortableList } from "./sortable";
 import { Card, CardHeader } from "./ui";
-import { readAsDataUrl } from "./editor-parts";
+import { uploadImageFile } from "./editor-parts";
 
 type Social = SiteSettings["socials"][number] & { k: string };
 const rid = () => Math.random().toString(36).slice(2);
@@ -93,12 +93,11 @@ function ImageField({
           accept="image/jpeg,image/png,image/webp"
           className="sr-only"
           tabIndex={-1}
-          onChange={async (e) => {
+          onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f) return;
-            if (f.size > 2 * 1024 * 1024) return void toast("ไฟล์ใหญ่เกิน 2MB");
-            onChange(await readAsDataUrl(f));
+            uploadImageFile(f, "channel").then(onChange, (err) => toast(err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ"));
           }}
         />
       </div>
@@ -163,7 +162,7 @@ function ChannelCard({ settings }: { settings: SiteSettings }) {
           </Field>
         </div>
         <ImageField label="รูปโปรไฟล์" value={f.avatar_url} onChange={(v) => set("avatar_url", v)} hint="สี่เหลี่ยมจัตุรัส อย่างน้อย 320×320" round />
-        <ImageField label="แบนเนอร์" value={f.banner_url} onChange={(v) => set("banner_url", v)} hint="แนะนำ 2560×640 ไม่เกิน 2MB" />
+        <ImageField label="แบนเนอร์" value={f.banner_url} onChange={(v) => set("banner_url", v)} hint="แนะนำ 2560×640" />
         <Field label="คำแนะนำตัว" counter={`${f.about.length.toLocaleString("th-TH")}/2,000`}>
           <textarea value={f.about} onChange={(e) => set("about", e.target.value.slice(0, 2000))} rows={6} className={cn(inputClass, "resize-y leading-6")} />
         </Field>

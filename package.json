@@ -12,7 +12,8 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:test-rls": "node scripts/db-test-rls.mjs",
     "db:seed": "node scripts/db-seed.mts",
-    "db:make-admin": "node scripts/db-make-admin.mjs"
+    "db:make-admin": "node scripts/db-make-admin.mjs",
+    "db:move-inline-images": "node scripts/db-move-inline-images.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -16,7 +16,7 @@ import { SortableItem, SortableList } from "./sortable";
 import { ContentPickerList } from "./content-picker";
 import { ConfirmDialog } from "./confirm";
 import { StudioThumb } from "./ui";
-import { readAsDataUrl } from "./editor-parts";
+import { uploadImageFile } from "./editor-parts";
 
 export interface StudioPlaylist {
   id: string;
@@ -232,12 +232,14 @@ function PlaylistForm({
               accept="image/jpeg,image/png,image/webp"
               className="sr-only"
               tabIndex={-1}
-              onChange={async (e) => {
+              onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";
                 if (!file) return;
-                if (file.size > 2 * 1024 * 1024) return void toast("ไฟล์ใหญ่เกิน 2MB");
-                set("thumbnail_url", await readAsDataUrl(file));
+                uploadImageFile(file, "playlists").then(
+                  (url) => set("thumbnail_url", url),
+                  (err) => toast(err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ"),
+                );
               }}
             />
           </div>

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { HttpError, rateLimit, requireAdmin, requireUser, getViewer } from "@/lib/server/auth";
 import * as M from "@/lib/server/mutations";
 import { type FeedQuery, getCommentView, listComments, listReplies, suggest as suggestQuery, listContent, notificationsFor } from "@/lib/server/queries";
-import { adminDb, userDb } from "@/lib/supabase/clients";
+import { storeImage } from "@/lib/server/images";
+import { userDb } from "@/lib/supabase/clients";
 import type { ThemePref } from "@/lib/types";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string; status?: number };
@@ -176,7 +177,7 @@ export async function updateProfileAction(input: { display_name?: string; avatar
       if (!n || n.length > 50) throw new HttpError(400, "ชื่อที่แสดงต้องยาว 1–50 ตัวอักษร");
       patch.display_name = n;
     }
-    if (input.avatar_url !== undefined) patch.avatar_url = await storeAvatar(v.id, input.avatar_url);
+    if (input.avatar_url !== undefined) patch.avatar_url = await storeImage(input.avatar_url, `avatars/${v.id}`, 1_000_000);
     await updateOwnProfile(v.id, patch);
     revalidatePath("/", "layout");
   });
@@ -187,19 +188,6 @@ async function updateOwnProfile(userId: string, patch: Record<string, unknown>) 
   const db = await userDb();
   const { error } = await db.from("profiles").update(patch).eq("id", userId);
   if (error) throw new HttpError(400, "บันทึกไม่สำเร็จ");
-}
-
-/** Avatars uploaded as data URLs go to Storage, so profiles stay small (they're loaded with every comment). */
-async function storeAvatar(userId: string, value: string | null) {
-  if (!value || !value.startsWith("data:")) return value;
-  const m = value.match(/^data:(image\/(png|jpeg|webp));base64,(.+)$/);
-  if (!m) throw new HttpError(400, "รองรับเฉพาะรูป PNG, JPG หรือ WebP");
-  const bytes = Buffer.from(m[3], "base64");
-  if (bytes.length > 1_000_000) throw new HttpError(400, "รูปใหญ่เกิน 1MB");
-  const path = `avatars/${userId}-${Date.now()}.${m[2] === "jpeg" ? "jpg" : m[2]}`;
-  const { error } = await adminDb().storage.from("thumbnails").upload(path, bytes, { contentType: m[1], upsert: true });
-  if (error) throw new HttpError(500, "อัปโหลดรูปไม่สำเร็จ");
-  return adminDb().storage.from("thumbnails").getPublicUrl(path).data.publicUrl;
 }
 
 /** Polled by /membership/success until expires_at moves. */

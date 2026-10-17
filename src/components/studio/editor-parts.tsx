@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { CircleCheck, Clock, Headphones, Lock, RotateCcw, TriangleAlert, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, inputClass } from "@/components/ui/misc";
-import { mediaStatusAction } from "@/app/studio/actions";
+import { imageUploadAction, mediaStatusAction } from "@/app/studio/actions";
 import { formatDuration } from "@/lib/format";
 import { parseChapters, tokenize } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
@@ -299,13 +299,19 @@ export async function captureFrames(file: File, count = 3): Promise<string[]> {
   }
 }
 
-export function readAsDataUrl(file: File) {
-  return new Promise<string>((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.onerror = () => rej(r.error);
-    r.readAsDataURL(file);
-  });
+/** Send a picked image file straight to Storage (any size) and resolve to its public URL. */
+export async function uploadImageFile(file: File, folder: "content" | "playlists" | "channel") {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ JPG, PNG หรือ WebP");
+  const t = toast.loading("กำลังอัปโหลดรูป…");
+  try {
+    const r = await imageUploadAction(folder, file.type);
+    if (!r.ok) throw new Error(r.error);
+    const res = await fetch(r.data.uploadUrl, { method: "PUT", headers: { "content-type": file.type, "x-upsert": "false" }, body: file });
+    if (!res.ok) throw new Error(res.status === 413 ? "ไฟล์ใหญ่เกินที่ Storage รับได้" : "อัปโหลดรูปไม่สำเร็จ");
+    return r.data.publicUrl;
+  } finally {
+    toast.dismiss(t);
+  }
 }
 
 export function imageSize(src: string) {
