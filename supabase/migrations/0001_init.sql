@@ -2,7 +2,7 @@
 -- TOPJ_GRIND — initial schema (spec §10) + Row Level Security (§11)
 -- Mirrors src/lib/server/store.ts so the demo query layer can be ported 1:1.
 -- ═══════════════════════════════════════════════════════════════════
-create extension if not exists pg_trgm;
+create extension if not exists pg_trgm with schema extensions;
 create extension if not exists pg_cron;
 
 -- ───────── Profiles & membership ─────────
@@ -83,6 +83,10 @@ create table public.categories (
   position int not null default 0
 );
 
+-- array_to_string is only STABLE; generated columns need IMMUTABLE. Tags are plain text, so this is safe.
+create or replace function public.tags_text(tags text[]) returns text
+language sql immutable parallel safe as $$ select coalesce(array_to_string(tags, ' '), '') $$;
+
 create table public.content (
   id uuid primary key default gen_random_uuid(),
   type text not null check (type in ('video','short','podcast')),
@@ -112,7 +116,7 @@ create table public.content (
   comment_count int not null default 0,
   search_vector tsvector generated always as (
     setweight(to_tsvector('simple', coalesce(title,'')), 'A') ||
-    setweight(to_tsvector('simple', array_to_string(tags, ' ')), 'B') ||
+    setweight(to_tsvector('simple', public.tags_text(tags)), 'B') ||
     setweight(to_tsvector('simple', coalesce(description,'')), 'C')
   ) stored,
   deleted_at timestamptz,
@@ -122,13 +126,31 @@ create table public.content (
 create index content_feed_idx on public.content (type, status, published_at desc);
 create index content_search_idx on public.content using gin (search_vector);
 create index content_tags_idx on public.content using gin (tags);
-create index content_title_trgm_idx on public.content using gin (title gin_trgm_ops);
+create index content_title_trgm_idx on public.content using gin (title extensions.gin_trgm_ops);
 
 -- A clip is on the site only when published + media ready + publish time passed.
 create or replace function public.content_is_live(c public.content) returns boolean
 language sql stable as $$
   select c.deleted_at is null and c.media_status = 'ready' and c.status = 'published'
      and c.published_at is not null and c.published_at <= now();
+$$;
+
+-- Policy helpers: run as owner so they work even though browsers can't read every content column.
+create or replace function public.content_visible(cid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from content c where c.id = cid and public.content_is_live(c));
+$$;
+
+create or replace function public.can_engage(cid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from content c where c.id = cid and public.content_is_live(c)
+                 and (c.visibility = 'public' or public.is_member()));
+$$;
+
+create or replace function public.can_comment(cid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from content c where c.id = cid and public.content_is_live(c) and c.comments_enabled
+                 and (c.visibility = 'public' or public.is_member()));
 $$;
 
 -- Browser-safe view: metadata only. Media locations (bunny_video_id, audio_path,
@@ -139,12 +161,6 @@ create view public.content_public with (security_invoker = true) as
          comments_enabled, linked_content_id, linked_start_sec, has_captions,
          view_count, like_count, comment_count, deleted_at, created_at, updated_at
   from public.content;
-
--- Column-level guard: even with RLS allowing the row, browsers can't select media locations.
-revoke select on public.content from anon, authenticated;
-grant select (id, type, title, description, thumbnail_url, preview_url, duration_sec, width, height, visibility, status,
-  media_status, published_at, scheduled_at, category_id, tags, comments_enabled, linked_content_id, linked_start_sec,
-  has_captions, view_count, like_count, comment_count, search_vector, deleted_at, created_at, updated_at) on public.content to anon, authenticated;
 
 create table public.content_links (
   id uuid primary key default gen_random_uuid(),
@@ -285,7 +301,6 @@ begin
    where id = coalesce(new.comment_id, old.comment_id);
   return null;
 end $$;
-create trigger comment_likes_count after insert or delete on public.comment_likes for each row execute function public.bump_comment_likes();
 
 create or replace function public.bump_comment_count() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -312,6 +327,8 @@ create table public.comment_likes (
   comment_id uuid references public.comments(id) on delete cascade,
   primary key (user_id, comment_id)
 );
+create trigger comment_likes_count after insert or delete on public.comment_likes for each row execute function public.bump_comment_likes();
+
 create table public.comment_reports (
   id uuid primary key default gen_random_uuid(),
   comment_id uuid not null references public.comments(id) on delete cascade,
@@ -364,11 +381,12 @@ create policy payments_read_own on public.payments for select using (user_id = a
 
 -- content metadata: published + live rows readable by everyone (members content included — it sells itself).
 -- Drafts/scheduled are admin-only via admin_all.
-create policy content_read_live on public.content for select using (public.content_is_live(content));
-create policy links_read on public.content_links for select using (exists (select 1 from content c where c.id = content_id and public.content_is_live(c)));
-create policy chapters_read on public.content_chapters for select using (exists (select 1 from content c where c.id = content_id and public.content_is_live(c)));
+create policy content_read_live on public.content for select
+  using (deleted_at is null and media_status = 'ready' and status = 'published' and published_at <= now());
+create policy links_read on public.content_links for select using (public.content_visible(content_id));
+create policy chapters_read on public.content_chapters for select using (public.content_visible(content_id));
 -- resource metadata readable; the file itself is a private bucket served by signed URL to members only
-create policy resources_read on public.content_resources for select using (exists (select 1 from content c where c.id = content_id and public.content_is_live(c)));
+create policy resources_read on public.content_resources for select using (public.content_visible(content_id));
 create policy categories_read on public.categories for select using (true);
 create policy playlists_read on public.playlists for select using (true);
 create policy playlist_items_read on public.playlist_items for select using (true);
@@ -379,18 +397,16 @@ create policy banned_words_none on public.banned_words for select using (public.
 -- personal data
 create policy progress_own on public.watch_progress for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy likes_own on public.likes for all using (user_id = auth.uid())
-  with check (user_id = auth.uid() and public.is_active_user() and exists (
-    select 1 from content c where c.id = content_id and public.content_is_live(c) and (c.visibility = 'public' or public.is_member())));
-create policy saved_own on public.saved for all using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_active_user());
+  with check (user_id = auth.uid() and public.is_active_user() and public.can_engage(content_id));
+create policy saved_own on public.saved for all using (user_id = auth.uid())
+  with check (user_id = auth.uid() and public.is_active_user() and public.can_engage(content_id));
 create policy notifications_own on public.notifications for select using (user_id = auth.uid());
 create policy notifications_mark_read on public.notifications for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- comments: anyone reads visible comments; members-only clips accept comments from members only
 create policy comments_read on public.comments for select using (deleted_at is null and not is_hidden);
 create policy comments_insert on public.comments for insert with check (
-  user_id = auth.uid() and public.is_active_user() and exists (
-    select 1 from content c where c.id = content_id and public.content_is_live(c) and c.comments_enabled
-      and (c.visibility = 'public' or public.is_member())));
+  user_id = auth.uid() and public.is_active_user() and public.can_comment(content_id));
 -- owner may edit body / soft-delete only their own; column-level rules live in comments_guard_update
 create policy comments_update_own on public.comments for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy comment_likes_own on public.comment_likes for all using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_active_user());
@@ -453,3 +469,47 @@ insert into storage.buckets (id, name, public) values ('resources', 'resources',
 create policy thumbs_admin_write on storage.objects for all using (bucket_id = 'thumbnails' and public.is_admin()) with check (bucket_id = 'thumbnails' and public.is_admin());
 create policy resources_admin_write on storage.objects for all using (bucket_id = 'resources' and public.is_admin()) with check (bucket_id = 'resources' and public.is_admin());
 -- no select policy on 'resources': downloads only via server-generated signed URLs (10 min) for members
+
+-- ═══════════════════════ Grants ═══════════════════════
+-- "Automatically expose new tables" is OFF in this project, so every privilege is explicit.
+-- RLS above decides WHICH rows; these decide which tables/columns a role may touch at all.
+grant usage on schema public to anon, authenticated;
+
+-- Public catalogue (guests can browse; members-only media still needs /api/play)
+grant select on public.profiles, public.categories, public.content_links, public.content_chapters,
+  public.content_resources, public.playlists, public.playlist_items, public.home_sections,
+  public.site_settings, public.comments
+  to anon, authenticated;
+grant select on public.content_public to anon, authenticated;
+
+-- Signed-in users: their own rows (RLS restricts to user_id = auth.uid())
+grant select on public.subscriptions, public.payments, public.notifications to authenticated;
+grant update (display_name, avatar_url, autoplay, theme, save_history) on public.profiles to authenticated;
+grant update (read_at) on public.notifications to authenticated;
+grant select, insert, update, delete on public.watch_progress to authenticated;
+grant select, insert, delete on public.likes, public.saved, public.comment_likes to authenticated;
+grant insert on public.comments to authenticated;
+grant update (body, deleted_at) on public.comments to authenticated;
+grant insert on public.comment_reports to authenticated;
+
+-- Admin (JR) works through the same role; RLS admin_all limits these rows to role = 'admin'
+grant select, insert, update, delete on public.categories, public.content_links, public.content_chapters,
+  public.content_resources, public.playlists, public.playlist_items, public.home_sections, public.site_settings,
+  public.banned_words, public.comment_reports, public.payment_errors, public.admin_audit_log, public.views
+  to authenticated;
+grant update (is_pinned, creator_hearted, is_hidden) on public.comments to authenticated;
+grant update (role, is_banned) on public.profiles to authenticated;
+grant insert, update on public.subscriptions to authenticated;
+grant insert, update, delete on public.content to authenticated;
+
+-- Column-level guard on content: only the server (service role) can read media locations
+-- (bunny_video_id, audio_path, captions_path).
+grant select (id, type, title, description, thumbnail_url, preview_url, duration_sec, width, height, visibility, status,
+  media_status, publish_when_ready, published_at, scheduled_at, category_id, tags, comments_enabled, linked_content_id,
+  linked_start_sec, has_captions, view_count, like_count, comment_count, search_vector, deleted_at, created_at, updated_at)
+  on public.content to anon, authenticated;
+
+-- Helpers used inside policies
+grant execute on function public.is_admin(), public.is_member(), public.is_active_user(),
+  public.content_visible(uuid), public.can_engage(uuid), public.can_comment(uuid) to anon, authenticated;
+revoke all on function public.publish_due(), public.expiry_reminders(), public.handle_new_user() from public, anon, authenticated;

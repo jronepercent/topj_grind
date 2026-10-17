@@ -139,6 +139,16 @@
 2. ภาพปกจาก Bunny CDN แทน picsum ที่ต้องผ่าน image optimizer ในเครื่อง (ภาพเปิด/ปกคือ LCP ของเกือบทุกหน้า)
 3. วัดซ้ำบน Vercel จริง — ตัวเลขในเครื่องแกว่ง ±10 คะแนนระหว่างรอบ
 
+## 4.1.2 เฟส 2 — บัญชีจริง + ฐานข้อมูล (2026-10-17)
+
+- ✅ ใส่ key ครบ 9 ค่า + `SUPABASE_DB_URL` · ทดสอบเชื่อมต่อผ่านทุกตัว (ไม่เปิดดูค่า key)
+- ✅ Bunny Stream: token auth เปิดที่ Pull Zone `vz-874ceb88-ad7` แล้ว — ลิงก์ไม่เซ็นถูกปฏิเสธ ลิงก์เซ็นผ่าน
+  - ⚠️ ต้องทดสอบบน iPhone จริงเมื่อมีวิดีโอ: คำขอที่ไม่มี Referer ยังถูกปฏิเสธ (Allowed referrers) ถ้า Safari เล่นไม่ได้ ให้ปิด referrer แล้วพึ่ง token อย่างเดียว
+- ✅ Migration `0001_init.sql` รันบน Supabase แล้ว: 23 ตาราง RLS ครบ · cron 3 งาน · bucket `thumbnails` (public) + `resources` (private)
+  - แก้ก่อนรัน: สิทธิ์ (GRANT) เขียนเองทั้งหมด เพราะปิด auto-expose · helper `content_visible / can_engage / can_comment` แทนการอ่านทั้งแถว · `tags_text()` ให้ search column เป็น immutable · ลำดับ trigger · `pg_trgm` อยู่ใน schema `extensions`
+- ✅ `npm run db:migrate` (มี `--dry-run`) · `npm run db:test-rls` → **23/23 ผ่าน** ใน transaction ที่ rollback (ไม่มีข้อมูลค้าง)
+- ⏳ ต่อไป: ย้าย `queries / mutations / auth` จาก store เดโมไป Supabase + ทำหน้า public เป็น static/ISR
+
 ## 4.2 Concept — เฟส 1 (2026-10-17)
 
 Canvas: https://claude.ai/artifact/3u3iPfMo9SGMhLfnALCdqR (ส่วนตัว — แชร์ได้จากเมนู Share)
