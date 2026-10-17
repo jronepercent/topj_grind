@@ -1,6 +1,4 @@
 {
-  "crons": [
-    { "path": "/api/cron/publish", "schedule": "* * * * *" },
-    { "path": "/api/cron/reminders", "schedule": "0 2 * * *" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["sin1"]
 }
