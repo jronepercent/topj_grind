@@ -301,7 +301,16 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
     }
   }
 
-  const method = parseMethod([...find(leaves, METHOD_KEYS)][0]?.value);
+  // Kohort sends no payment-method tag, so fall back to the product name: the one-time ("ลูกค้าต่ออายุเอง" /
+  // พร้อมเพย์) products are PromptPay passes, the auto-renewing ones are card subscriptions.
+  const methodField = [...find(leaves, METHOD_KEYS)][0]?.value;
+  const productText = [...find(leaves, PLAN_TEXT_KEYS)].map((l) => String(l.value)).join(" ");
+  const method =
+    methodField !== undefined && String(methodField).trim()
+      ? parseMethod(methodField)
+      : /ต่ออายุเอง|พร้อมเพย์|promptpay|จ่ายครั้งเดียว|one[- ]?time/i.test(productText)
+        ? "promptpay"
+        : "card";
 
   let paid_at: string | null = null;
   for (const l of find(leaves, DATE_KEYS)) {

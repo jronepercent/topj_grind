@@ -74,15 +74,18 @@ function parseUrl(raw: string | undefined) {
 }
 
 /**
- * Which hosted page a purchase goes to: PAYMENT_URL_MONTHLY / PAYMENT_URL_YEARLY for that plan (one Kohort product link
- * per plan), falling back to PAYMENT_URL. Products always use PAYMENT_URL. Card and PromptPay share the same link —
- * the buyer picks the method on the hosted page.
+ * Which hosted page a purchase goes to. Most specific first:
+ *   PAYMENT_URL_<PLAN>_PROMPTPAY  (e.g. Kohort's one-time "ลูกค้าต่ออายุเอง" product, PromptPay buyers only)
+ *   PAYMENT_URL_<PLAN>            (the plan's link — Kohort's auto-renewing card product)
+ *   PAYMENT_URL                   (one link for everything)
+ * Products always use PAYMENT_URL.
  */
 function paymentUrlFor(input: CheckoutInput) {
   const general = parseUrl(process.env.PAYMENT_URL);
   if (input.kind === "product") return general;
-  const perPlan = parseUrl(input.plan === "yearly" ? process.env.PAYMENT_URL_YEARLY : process.env.PAYMENT_URL_MONTHLY);
-  return perPlan ?? general;
+  const plan = input.plan === "yearly" ? "YEARLY" : "MONTHLY";
+  const perMethod = input.method === "promptpay" ? parseUrl(process.env[`PAYMENT_URL_${plan}_PROMPTPAY`]) : null;
+  return perMethod ?? parseUrl(process.env[`PAYMENT_URL_${plan}`]) ?? general;
 }
 
 /** Generic hosted payment page. It gets only an opaque user id, the plan (or product id) and the method (hosts like Kohort ignore unknown params). */
@@ -102,7 +105,13 @@ const redirectGateway: PaymentGateway = {
 
 /** Any payment URL env var wins over demo mode (as before), so a configured production site can never fall into the demo flow. */
 export function resolveGateway(): PaymentGateway | null {
-  const vars = [process.env.PAYMENT_URL, process.env.PAYMENT_URL_MONTHLY, process.env.PAYMENT_URL_YEARLY];
+  const vars = [
+    process.env.PAYMENT_URL,
+    process.env.PAYMENT_URL_MONTHLY,
+    process.env.PAYMENT_URL_YEARLY,
+    process.env.PAYMENT_URL_MONTHLY_PROMPTPAY,
+    process.env.PAYMENT_URL_YEARLY_PROMPTPAY,
+  ];
   if (vars.some((v) => v?.trim())) return vars.some((v) => parseUrl(v)) ? redirectGateway : null;
   return isDemoMode() ? demoGateway : null;
 }
