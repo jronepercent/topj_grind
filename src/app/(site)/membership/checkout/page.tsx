@@ -48,6 +48,7 @@ export default async function CheckoutPage({
         mode={mode}
         from={from ?? null}
         demoEmail={mode === "demo" ? viewer.email : null}
+        payEmail={mode === "live" ? viewer.email : null}
       />
     </div>
   );

@@ -111,7 +111,7 @@ export function SuccessPoller({
           </span>
           <h1 className="t-h1 mt-8">กำลังยืนยันการชำระเงิน…</h1>
           {plan && <p className="mt-3 text-[15px] font-medium">{PLANS[plan].name} · {PLANS[plan].price.toLocaleString("th-TH")} บาท</p>}
-          <p className="t-meta mt-2 max-w-sm">ปกติใช้เวลาไม่ถึง 1 นาที เปิดหน้านี้ค้างไว้ได้เลย เราจะอัปเดตให้อัตโนมัติ</p>
+          <p className="t-meta mt-2 max-w-sm">การเปิดสมาชิกอาจใช้เวลาถึง 1 นาทีหลังชำระเงินสำเร็จ เปิดหน้านี้ค้างไว้ได้เลย เราจะอัปเดตให้อัตโนมัติ</p>
           <div className="mt-8 w-full max-w-[320px] space-y-2.5" aria-hidden>
             <div className="skeleton h-3 rounded-full" />
             <div className="skeleton mx-auto h-3 w-3/4 rounded-full" />
@@ -178,7 +178,7 @@ export function SuccessPoller({
           </span>
           <h1 className="t-h1 mt-8">ยังไม่ได้รับการยืนยัน</h1>
           <p className="t-meta mt-2 max-w-sm">
-            บางครั้งระบบชำระเงินใช้เวลานานกว่าปกติ ถ้าชำระแล้วแต่สถานะยังไม่อัปเดต ทักเราทาง LINE OA พร้อมแนบสลิป เราจะรีบตรวจสอบให้
+            บางครั้งระบบชำระเงินใช้เวลานานกว่าปกติ ถ้าชำระแล้วแต่สถานะยังไม่อัปเดต ตรวจดูว่าใช้อีเมลเดียวกับบัญชีนี้ตอนชำระเงินหรือไม่ แล้วทักเราทาง LINE OA พร้อมแนบสลิป เราจะรีบตรวจสอบให้
           </p>
           <div className="mt-8 flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button

@@ -84,6 +84,9 @@ export interface PaymentPayload {
   paid_at: string;
 }
 
+/** payment_errors.reason for a paid webhook whose email/user_id matched nobody (the Kohort auto-claim looks for it). */
+export const USER_NOT_FOUND_REASON = "ไม่พบผู้ใช้";
+
 export type PaymentResult = { status: 200; expires_at: string; duplicate: boolean } | { status: 404 | 400; error: string };
 
 /** Payment contract §9.1 — the database function apply_payment() does the atomic, idempotent part. */
@@ -136,7 +139,7 @@ export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<Pay
   }
   if (!userId && dup.data) userId = dup.data.user_id;
   if (!userId) {
-    await db.from("payment_errors").insert({ payload: raw, reason: "ไม่พบผู้ใช้" });
+    await db.from("payment_errors").insert({ payload: raw, reason: USER_NOT_FOUND_REASON });
     return { status: 404, error: "user not found" };
   }
 
@@ -202,7 +205,7 @@ export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<Pu
   }
   if (!userId && dup.data) userId = dup.data.user_id;
   if (!userId) {
-    await db.from("payment_errors").insert({ payload: raw, reason: "ไม่พบผู้ใช้" });
+    await db.from("payment_errors").insert({ payload: raw, reason: USER_NOT_FOUND_REASON });
     return { status: 404, error: "user not found" };
   }
 

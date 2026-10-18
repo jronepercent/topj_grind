@@ -5,6 +5,11 @@
 // Shop product: npm run webhook:test -- <email> [card|promptpay] [reference] --product=<product id> [--amount=N]
 //   npm run webhook:test -- me@example.com card --product=3f2c1a9e-... (amount defaults to the product's price)
 //   Looks the price up with --price=N, e.g. --price=1290 (the same number as the product's price_thb in Studio).
+// Kohort (no signature, shared secret KOHORT_WEBHOOK_SECRET from .env.local): add --kohort
+//   npm run webhook:test -- --kohort me@example.com yearly promptpay [reference] [--amount=N] [--no-ref]
+//   Default = what Kohort really does: everything in the URL query (email, value, currency, plan = product name,
+//   event_id), empty body. --json sends the same fields as a JSON body instead. --no-ref leaves the reference out so the
+//   generated "kohort:<sha256>" one is used; WEBHOOK_TEST_URL picks the host (default http://localhost:3000).
 import { createHmac, randomUUID } from "node:crypto";
 import fs from "node:fs";
 
@@ -54,8 +59,40 @@ if (!METHODS.includes(method)) {
   console.error(`method must be one of: ${METHODS.join(", ")}`);
   process.exit(1);
 }
-const secret = env("PAYMENT_WEBHOOK_SECRET");
 const base = env("WEBHOOK_TEST_URL") ?? "http://localhost:3000";
+
+if ("kohort" in flags) {
+  if (productId) {
+    console.error("--kohort tests memberships only; send a product with the signed webhook");
+    process.exit(1);
+  }
+  const kohortSecret = env("KOHORT_WEBHOOK_SECRET");
+  if (!kohortSecret) {
+    console.error("KOHORT_WEBHOOK_SECRET is not set (.env.local)");
+    process.exit(1);
+  }
+  const names = { monthly: "สมาชิก 990 บาท / เดือน ต่ออายุทุก 30 วัน", yearly: "สมาชิกรายปี 4,990 บาท / ปี" };
+  const fields = {
+    email,
+    value: String(flags.amount !== undefined ? Number(flags.amount) : PLANS[plan]),
+    currency: "THB",
+    product_name: names[plan],
+    ...("no-ref" in flags ? {} : { event_id: reference }),
+    payment_method: method,
+  };
+  // The secret travels in the query string, as Kohort will send it. It is never printed.
+  const useJson = "json" in flags;
+  const qs = new URLSearchParams({ secret: kohortSecret, ...(useJson ? {} : fields) });
+  const kres = await fetch(`${base}/api/webhooks/kohort?${qs}`, {
+    method: "POST",
+    headers: useJson ? { "Content-Type": "application/json" } : {},
+    body: useJson ? JSON.stringify(fields) : undefined,
+  });
+  console.log(kres.status, await kres.text(), "no-ref" in flags ? "(generated reference)" : `(reference=${reference})`);
+  process.exit(0);
+}
+
+const secret = env("PAYMENT_WEBHOOK_SECRET");
 if (!secret) {
   console.error("PAYMENT_WEBHOOK_SECRET is not set (.env.local)");
   process.exit(1);

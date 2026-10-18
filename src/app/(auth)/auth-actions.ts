@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { userDb } from "@/lib/supabase/clients";
 import { getViewer, isDemoMode, rateLimit } from "@/lib/server/auth";
 import { DEMO_ACCOUNTS, demoPassword, type DemoRole } from "@/lib/server/demo-accounts";
+import { claimKohortPayments } from "@/lib/server/kohort";
 
 export type AuthState = { error?: string; info?: string; devLink?: string } | undefined;
 
@@ -59,7 +60,11 @@ export async function signupAction(_: AuthState, form: FormData): Promise<AuthSt
     options: { data: { display_name: name }, emailRedirectTo: `${await siteOrigin()}/auth/callback?next=${encodeURIComponent(next)}` },
   });
   if (error) return { error: thaiAuthError(error.message) };
-  if (data.session) redirect(next); // email confirmation is off
+  if (data.session) {
+    // Email confirmation is off: they are signed in already, so pick up any Kohort payment made with this email earlier.
+    if (data.user) await claimKohortPayments(data.user.id, email);
+    redirect(next);
+  }
   return { info: `ส่งลิงก์ยืนยันไปที่ ${email} แล้ว เปิดอีเมลแล้วกดลิงก์เพื่อเริ่มใช้งาน` };
 }
 

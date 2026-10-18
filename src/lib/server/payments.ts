@@ -61,33 +61,49 @@ const demoGateway: PaymentGateway = {
   },
 };
 
-/** Generic hosted payment page (PAYMENT_URL). It gets only an opaque user id, the plan (or product id) and the method. */
-function redirectGateway(base: URL): PaymentGateway {
-  return {
-    id: "redirect",
-    async createCheckout(input) {
-      const u = new URL(base);
-      u.searchParams.set("uid", input.userId);
-      if (input.kind === "product") u.searchParams.set("product", input.productId);
-      else u.searchParams.set("plan", input.plan);
-      u.searchParams.set("method", input.method);
-      return { url: u.toString(), external: true };
-    },
-  };
-}
-
-/** PAYMENT_URL wins over demo mode (as before), so a configured production site can never fall into the demo flow. */
-export function resolveGateway(): PaymentGateway | null {
-  const raw = process.env.PAYMENT_URL?.trim();
-  if (raw) {
-    try {
-      const u = new URL(raw);
-      if (u.protocol === "https:" || u.protocol === "http:") return redirectGateway(u);
-    } catch {
-      /* bad URL → treated as not configured */
-    }
+/** A configured payment URL (http/https only), or null when unset / malformed. */
+function parseUrl(raw: string | undefined) {
+  const v = raw?.trim();
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" || u.protocol === "http:" ? u : null;
+  } catch {
     return null;
   }
+}
+
+/**
+ * Which hosted page a purchase goes to: PAYMENT_URL_MONTHLY / PAYMENT_URL_YEARLY for that plan (one Kohort product link
+ * per plan), falling back to PAYMENT_URL. Products always use PAYMENT_URL. Card and PromptPay share the same link —
+ * the buyer picks the method on the hosted page.
+ */
+function paymentUrlFor(input: CheckoutInput) {
+  const general = parseUrl(process.env.PAYMENT_URL);
+  if (input.kind === "product") return general;
+  const perPlan = parseUrl(input.plan === "yearly" ? process.env.PAYMENT_URL_YEARLY : process.env.PAYMENT_URL_MONTHLY);
+  return perPlan ?? general;
+}
+
+/** Generic hosted payment page. It gets only an opaque user id, the plan (or product id) and the method (hosts like Kohort ignore unknown params). */
+const redirectGateway: PaymentGateway = {
+  id: "redirect",
+  async createCheckout(input) {
+    const base = paymentUrlFor(input);
+    if (!base) throw new Error(`no payment URL configured for ${input.kind === "product" ? "products" : input.plan}`);
+    const u = new URL(base);
+    u.searchParams.set("uid", input.userId);
+    if (input.kind === "product") u.searchParams.set("product", input.productId);
+    else u.searchParams.set("plan", input.plan);
+    u.searchParams.set("method", input.method);
+    return { url: u.toString(), external: true };
+  },
+};
+
+/** Any payment URL env var wins over demo mode (as before), so a configured production site can never fall into the demo flow. */
+export function resolveGateway(): PaymentGateway | null {
+  const vars = [process.env.PAYMENT_URL, process.env.PAYMENT_URL_MONTHLY, process.env.PAYMENT_URL_YEARLY];
+  if (vars.some((v) => v?.trim())) return vars.some((v) => parseUrl(v)) ? redirectGateway : null;
   return isDemoMode() ? demoGateway : null;
 }
 

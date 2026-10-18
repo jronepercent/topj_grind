@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CreditCard, FlaskConical, Lock, QrCode } from "lucide-react";
+import { AlertCircle, CreditCard, FlaskConical, Lock, Mail, QrCode } from "lucide-react";
 import { startCheckoutAction } from "@/app/(site)/membership/checkout/actions";
 import { PAY_FROM_KEY } from "@/app/(site)/membership/_components/pay-button";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ export function CheckoutForm({
   mode,
   from,
   demoEmail,
+  payEmail,
 }: {
   initialPlan: PlanCode;
   /** Current membership end (ISO) — a new payment extends from here while it is still in the future. */
@@ -40,6 +41,8 @@ export function CheckoutForm({
   mode: "live" | "demo" | "closed";
   from: string | null;
   demoEmail: string | null;
+  /** The signed-in viewer's own email, shown only when paying happens on an external page (which matches the payment to the account by email). */
+  payEmail: string | null;
 }) {
   const router = useRouter();
   const [planCode, setPlanCode] = React.useState<PlanCode>(initialPlan);
@@ -219,6 +222,15 @@ export function CheckoutForm({
           <div role="alert" className="mt-4 flex gap-3 rounded-[14px] border border-danger/40 bg-danger/10 p-4 text-[14px]">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" strokeWidth={1.75} aria-hidden />
             <p>{error}</p>
+          </div>
+        )}
+
+        {payEmail && !closed && (
+          <div className="mt-4 flex gap-3 rounded-[14px] border border-member/40 bg-member/10 p-4 text-[14px]">
+            <Mail className="mt-0.5 size-5 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+            <p>
+              ใช้อีเมลเดียวกับบัญชีนี้ (<strong className="break-all font-semibold">{payEmail}</strong>) ตอนชำระเงิน ระบบจะเปิดสมาชิกให้อัตโนมัติ
+            </p>
           </div>
         )}
 
