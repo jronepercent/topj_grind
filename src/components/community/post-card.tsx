@@ -35,6 +35,8 @@ export function PostCard({
   const [expanded, setExpanded] = React.useState(!!detail);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [pop, setPop] = React.useState(false);
+  const [burst, setBurst] = React.useState(0);
+  const lastTap = React.useRef(0);
   const busy = React.useRef(false);
   const mine = viewer?.id === post.author.id;
   const admin = !!viewer?.is_admin;
@@ -57,6 +59,15 @@ export function PostCard({
     } else onChange?.({ liked_by_me: r.data.liked, like_count: r.data.like_count });
   };
 
+  // Double-click / double-tap anywhere on the card likes it (never unlikes), like Instagram.
+  // Buttons, links and menus keep their own clicks.
+  const onCard = (target: EventTarget) => !(target as HTMLElement).closest("a, button, [role='menu'], [role='dialog']");
+  const touchLikedAt = React.useRef(0);
+  const likeFromCard = () => {
+    if (viewer) setBurst((n) => n + 1);
+    void setLiked(true);
+  };
+
   const moderate = async (action: "pin" | "unpin" | "hide" | "unhide") => {
     const r = await moderatePostAction(post.id, action);
     if (!r.ok) return toast(r.error);
@@ -70,7 +81,24 @@ export function PostCard({
   };
 
   return (
-    <article className={cn("overflow-hidden rounded-[16px] border border-border bg-surface", post.is_hidden && "opacity-60", className)}>
+    <article
+      className={cn("relative overflow-hidden rounded-[16px] border border-border bg-surface", post.is_hidden && "opacity-60", className)}
+      onDoubleClick={(e) => {
+        // phones may also send dblclick after a double-tap that onTouchEnd already handled
+        if (!onCard(e.target) || Date.now() - touchLikedAt.current < 600) return;
+        window.getSelection()?.removeAllRanges();
+        likeFromCard();
+      }}
+      onTouchEnd={(e) => {
+        if (!onCard(e.target)) return;
+        const now = Date.now();
+        if (now - lastTap.current < 300) {
+          lastTap.current = 0;
+          touchLikedAt.current = now;
+          likeFromCard();
+        } else lastTap.current = now;
+      }}
+    >
       <header className="flex items-center gap-3 px-4 py-3">
         <Avatar src={post.author.avatar_url} name={post.author.display_name} size={40} />
         <div className="min-w-0 flex-1">
@@ -130,7 +158,20 @@ export function PostCard({
         )}
       </header>
 
-      {post.images.length > 0 && <ImageCarousel images={post.images} priority={priority} onDoubleTap={() => void setLiked(true)} />}
+      {post.body && (
+        <div className="px-4 pb-3 text-[15px] leading-[24px]">
+          <div className={cn(!expanded && long && "line-clamp-4")}>
+            <RichText text={post.body} />
+          </div>
+          {long && !expanded && (
+            <button onClick={() => setExpanded(true)} className="mt-0.5 block text-text-2 hover:text-text">
+              ดูเพิ่มเติม
+            </button>
+          )}
+        </div>
+      )}
+
+      {post.images.length > 0 && <ImageCarousel images={post.images} priority={priority} />}
 
       <div className="px-4 pb-4 pt-2.5">
         <div className="-ml-2 flex items-center gap-1">
@@ -153,26 +194,21 @@ export function PostCard({
 
         {post.like_count > 0 && <p className="tnum mt-1 text-[14px] font-semibold">{formatCount(post.like_count)} ถูกใจ</p>}
 
-        {post.body && (
-          <div className="mt-1.5 text-[14px] leading-[22px]">
-            <span className="mr-1.5 font-semibold">{name}</span>
-            <span className={cn(!expanded && long && "line-clamp-3")}>
-              <RichText text={post.body} />
-            </span>
-            {long && !expanded && (
-              <button onClick={() => setExpanded(true)} className="mt-0.5 block text-text-2 hover:text-text">
-                ดูเพิ่มเติม
-              </button>
-            )}
-          </div>
-        )}
-
         {!detail && (
           <Link href={`${href}#comments`} className="t-meta mt-2 block hover:text-text">
             {post.comment_count > 0 ? `ดูความคิดเห็นทั้งหมด ${formatCount(post.comment_count)} รายการ` : "เป็นคนแรกที่แสดงความคิดเห็น"}
           </Link>
         )}
       </div>
+
+      {burst > 0 && (
+        <Heart
+          key={burst}
+          className="pointer-events-none absolute left-1/2 top-1/2 size-24 fill-white text-white drop-shadow-lg"
+          style={{ animation: "floatHeart 900ms var(--ease-apple) forwards" }}
+          aria-hidden
+        />
+      )}
 
       <ConfirmDialog
         open={confirmDelete}

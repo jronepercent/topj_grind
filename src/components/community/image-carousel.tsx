@@ -34,7 +34,8 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
     el.scrollTo({ left: Math.max(0, Math.min(images.length - 1, i)) * el.clientWidth, behavior: "smooth" });
   };
   const like = () => {
-    onDoubleTap?.();
+    if (!onDoubleTap) return; // the post card handles double-tap itself
+    onDoubleTap();
     setBurst((n) => n + 1);
   };
 
