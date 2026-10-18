@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getViewer, isDemoMode } from "@/lib/server/auth";
+import { getViewer } from "@/lib/server/auth";
+import { checkoutMode } from "@/lib/server/payments";
 import { siteSettings } from "@/lib/server/queries";
 import { subscriptionFor } from "@/lib/server/queries";
+import { isCheckoutMethod, isPlanCode } from "@/lib/plans";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { SuccessPoller } from "../_components/success-poller";
@@ -20,10 +22,13 @@ function safePath(v: string | string[] | undefined) {
 export default async function MembershipSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string | string[]; demo?: string }>;
+  searchParams: Promise<{ from?: string | string[]; demo?: string; plan?: string; method?: string }>;
 }) {
   const sp = await searchParams;
   const from = safePath(sp.from);
+  // plan / method come from the link and are only used to word the page; the payment itself decides the membership.
+  const plan = isPlanCode(sp.plan) ? sp.plan : null;
+  const method = isCheckoutMethod(sp.method) ? sp.method : null;
   const viewer = await getViewer();
 
   if (!viewer) {
@@ -59,7 +64,9 @@ export default async function MembershipSuccessPage({
         expiresAt={viewer.expires_at}
         isMember={viewer.is_member}
         lineUrl={line}
-        demoEmail={isDemoMode() && !process.env.PAYMENT_URL ? viewer.email : null}
+        demoEmail={checkoutMode() === "demo" ? viewer.email : null}
+        plan={plan}
+        method={method}
       />
     </div>
   );

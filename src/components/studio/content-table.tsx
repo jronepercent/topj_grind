@@ -164,7 +164,6 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
             <select aria-label="ประเภท" value={type} onChange={(e) => setType(e.target.value as ContentType | "all")} className={selectClass} style={selectStyle}>
               <option value="all">ทุกประเภท</option>
               <option value="video">วิดีโอ</option>
-              <option value="short">Shorts</option>
               <option value="podcast">พอดแคสต์</option>
             </select>
             <select aria-label="สถานะ" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className={selectClass} style={selectStyle}>

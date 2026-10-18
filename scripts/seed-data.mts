@@ -411,8 +411,7 @@ export function buildSeed() {
         { key: "line", label: "LINE OA", url: "https://lin.ee/topjgrind" },
       ],
       paywall_title: "คอนเทนต์นี้สำหรับสมาชิก TOPJ_GRIND",
-      paywall_benefits: ["ดูได้ทุกคลิป ทั้งวิดีโอและ Shorts", "ฟังพอดแคสต์ทุกตอน", "ดาวน์โหลดไฟล์ประกอบและ Template", "คอมเมนต์คุยกับ JR ได้โดยตรง"],
-      price_thb: Number(process.env.MEMBERSHIP_PRICE_THB ?? 300),
+      paywall_benefits: ["ดูได้ทุกคลิปวิดีโอ และอ่านบทความสำหรับสมาชิก", "ฟังพอดแคสต์ทุกตอน", "ดาวน์โหลดไฟล์ประกอบและ Template", "คอมเมนต์คุยกับ JR ได้โดยตรง"],
     },
     admin_audit_log: [],
   };

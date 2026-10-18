@@ -58,8 +58,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   banner_url: "",
   socials: [],
   paywall_title: "คอนเทนต์นี้สำหรับสมาชิก TOPJ_GRIND",
-  paywall_benefits: ["ดูได้ทุกคลิป ทั้งวิดีโอและ Grind", "ฟังพอดแคสต์ทุกตอน", "ดาวน์โหลดไฟล์ประกอบและ Template", "คอมเมนต์คุยกับ JR ได้โดยตรง"],
-  price_thb: Number(process.env.MEMBERSHIP_PRICE_THB ?? 300),
+  paywall_benefits: ["ดูได้ทุกคลิปวิดีโอ และอ่านบทความสำหรับสมาชิก", "ฟังพอดแคสต์ทุกตอน", "ดาวน์โหลดไฟล์ประกอบและ Template", "คอมเมนต์คุยกับ JR ได้โดยตรง"],
 };
 
 const loadCatalog = unstable_cache(
@@ -122,10 +121,13 @@ export function canWatch(viewer: Viewer | null, c: Pick<ContentRow, "visibility"
   return !!viewer && (viewer.is_admin || viewer.is_member);
 }
 
+/** Shorts were replaced by ชุมชน: old `short` rows may remain in the DB but never surface in any list. */
+const isListed = (c: Pick<ContentRow, "type">) => c.type !== "short";
+
 async function liveRows(type?: ContentType) {
   const now = Date.now();
   return (await catalog()).content
-    .filter((c) => isLive(c, now) && (!type || c.type === type))
+    .filter((c) => isListed(c) && isLive(c, now) && (!type || c.type === type))
     .sort((a, b) => +new Date(liveAt(b)!) - +new Date(liveAt(a)!));
 }
 
@@ -171,7 +173,7 @@ export async function getContent(id: string, viewer: Viewer | null): Promise<Con
 
 export async function getContentsByIds(ids: string[]) {
   const now = Date.now();
-  const map = new Map((await catalog()).content.filter((c) => isLive(c, now)).map((c) => [c.id, c]));
+  const map = new Map((await catalog()).content.filter((c) => isListed(c) && isLive(c, now)).map((c) => [c.id, c]));
   return ids.map((id) => map.get(id)).filter((c): c is Content => !!c).map(toPublic);
 }
 
@@ -189,7 +191,7 @@ export async function getResources(contentId: string) {
 }
 
 export async function related(c: Content, limit = 12) {
-  const rows = (await liveRows()).filter((x) => x.id !== c.id && x.type !== "short");
+  const rows = (await liveRows()).filter((x) => x.id !== c.id);
   const score = (x: Content) =>
     (x.category_id === c.category_id ? 10 : 0) + x.tags.filter((t) => c.tags.includes(t)).length * 3 + (x.type === c.type ? 1 : 0);
   return rows
@@ -281,7 +283,7 @@ export async function continueWatching(userId: string | null | undefined, limit 
       .limit(40),
     "continue watching",
   );
-  return (await getContentsByIds(rows.map((r) => r.content_id))).filter((c) => c.type !== "short").slice(0, limit);
+  return (await getContentsByIds(rows.map((r) => r.content_id))).slice(0, limit);
 }
 
 // ───────────────────────── Playlists ─────────────────────────
@@ -462,7 +464,7 @@ export async function heroSlides(): Promise<HeroSlide[]> {
   const cat = await catalog();
   if (cat.home.some((s) => s.type === "hero" && !s.enabled)) return [];
   const now = Date.now();
-  const live = new Map(cat.content.filter((c) => isLive(c, now)).map((c) => [c.id, c]));
+  const live = new Map(cat.content.filter((c) => isListed(c) && isLive(c, now)).map((c) => [c.id, c]));
   const out: HeroSlide[] = [];
   for (const row of cat.hero) {
     if (!row.enabled) continue;

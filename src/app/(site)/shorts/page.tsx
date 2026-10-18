@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
-import { ShortsPage } from "@/components/shorts/shorts-page";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Shorts" };
-
-export default async function Page() {
-  return <ShortsPage />;
+// Shorts were replaced by ชุมชน. Old links and bookmarks go there.
+export default function Page() {
+  permanentRedirect("/community");
 }

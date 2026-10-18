@@ -3,19 +3,20 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { MediaPlayer, MediaProvider, useMediaRemote, useMediaState, type MediaPlayerInstance } from "@vidstack/react";
 import { ChevronDown, Expand, ListMusic, Moon, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { usePlayer, type PlayerItem } from "@/lib/stores/player";
 import { VideoPlayer } from "./video-player";
 import { Dialog, SheetContent } from "@/components/ui/dialog";
-import { usePlaySource, useProgressSaver, useViewTracker, type PlaySource } from "./playback-hooks";
+import { useAudioEngine } from "./audio-engine";
 import { useViewer } from "@/components/providers";
 import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
  * App-level player that lives outside the route tree, so audio never stops
- * when the user navigates. Podcasts → audio mini bar + full sheet.
+ * when the user navigates. Podcasts → audio mini bar + full sheet. The sound itself comes from one shared
+ * <audio> element (lib/stores/audio-element.ts) driven by useAudioEngine, so it keeps playing with the screen
+ * off and can start the next episode by itself.
  * Long videos left mid-play → floating mini video (bottom-right).
  */
 export function GlobalPlayer() {
@@ -27,7 +28,8 @@ export function GlobalPlayer() {
     if (pathname === `/watch/${item.id}`) return null;
     return <MiniVideo key={`${item.id}-${nonce}`} item={item} />;
   }
-  return <AudioPlayer key={`${item.id}-${nonce}`} item={item} />;
+  // No key: moving from one episode to the next must NOT remount, or the audio element would be re-created mid-lock-screen.
+  return <AudioPlayer item={item} nonce={nonce} />;
 }
 
 // ───────────────────────── Mini video ─────────────────────────
@@ -61,18 +63,18 @@ function MiniVideo({ item }: { item: PlayerItem }) {
 }
 
 // ───────────────────────── Audio (podcast) ─────────────────────────
-function AudioPlayer({ item }: { item: PlayerItem }) {
-  const { source, error, retry } = usePlaySource(item.id);
+function AudioPlayer({ item, nonce }: { item: PlayerItem; nonce: number }) {
+  const { status, retry } = useAudioEngine(item, nonce);
   const { openPaywall } = useViewer();
   const close = usePlayer((s) => s.close);
 
   React.useEffect(() => {
-    if (error !== "members_only") return;
+    if (status !== "members_only") return;
     close();
     openPaywall(item.thumb);
-  }, [error, close, openPaywall, item.thumb]);
+  }, [status, close, openPaywall, item.thumb]);
 
-  if (error === "unavailable")
+  if (status === "unavailable")
     return (
       <Bar item={item}>
         <span className="t-meta flex-1">เล่นตอนนี้ไม่ได้</span>
@@ -81,13 +83,7 @@ function AudioPlayer({ item }: { item: PlayerItem }) {
         </button>
       </Bar>
     );
-  if (!source)
-    return (
-      <Bar item={item}>
-        <span className="skeleton h-3 flex-1 rounded" />
-      </Bar>
-    );
-  return <AudioInner item={item} src={source} />;
+  return <AudioUI item={item} loading={status === "loading"} />;
 }
 
 function Bar({ item, children }: { item: PlayerItem; children: React.ReactNode }) {
@@ -114,138 +110,17 @@ function Cover({ src, size, className }: { src: string | null; size: number; cla
   );
 }
 
-function AudioInner({ item, src }: { item: PlayerItem; src: PlaySource }) {
-  const player = React.useRef<MediaPlayerInstance>(null);
-  const { sync, setControls, next, sleep, setSleep } = usePlayer();
-  const trackView = useViewTracker(item.id, "podcast");
-  const progress = useProgressSaver(item.id);
-  const lastSync = React.useRef(0);
-  const started = React.useRef(false);
-
-  React.useEffect(() => {
-    setControls({
-      toggle: () => {
-        const p = player.current;
-        if (!p) return;
-        if (p.paused) p.play().catch(() => {});
-        else p.pause();
-      },
-      seek: (t) => {
-        if (player.current) player.current.currentTime = t;
-      },
-      setRate: (r) => {
-        if (player.current) player.current.playbackRate = r;
-      },
-    });
-    return () => setControls(null);
-  }, [setControls]);
-
-  // Sleep timer
-  React.useEffect(() => {
-    if (sleep.mode !== "time") return;
-    const ms = sleep.at - Date.now();
-    const t = setTimeout(() => {
-      player.current?.pause();
-      setSleep({ mode: "off" });
-    }, Math.max(0, ms));
-    return () => clearTimeout(t);
-  }, [sleep, setSleep]);
-
-  // Media Session — lock screen controls
-  React.useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    const ms = navigator.mediaSession;
-    ms.metadata = new MediaMetadata({
-      title: item.title,
-      artist: "TOPJ_GRIND",
-      album: "GRIND TALK",
-      artwork: item.thumb ? [{ src: item.thumb, sizes: "800x800", type: "image/jpeg" }] : [],
-    });
-    const p = () => player.current;
-    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ["play", () => p()?.play()],
-      ["pause", () => p()?.pause()],
-      ["seekbackward", () => p() && (p()!.currentTime -= 15)],
-      ["seekforward", () => p() && (p()!.currentTime += 30)],
-      ["seekto", (d) => d.seekTime != null && p() && (p()!.currentTime = d.seekTime)],
-      ["nexttrack", () => usePlayer.getState().queue.length && next()],
-    ];
-    for (const [a, h] of handlers) {
-      try {
-        ms.setActionHandler(a, h);
-      } catch {}
-    }
-    return () => {
-      for (const [a] of handlers) {
-        try {
-          ms.setActionHandler(a, null);
-        } catch {}
-      }
-    };
-  }, [item.title, item.thumb, next]);
-
-  return (
-    <MediaPlayer
-      ref={player}
-      src={{ src: src.src, type: src.type as "audio/mpeg" }}
-      viewType="audio"
-      load="eager"
-      autoPlay
-      title={item.title}
-      keyDisabled
-      className="contents"
-      onCanPlay={() => {
-        if (started.current) return;
-        started.current = true;
-        if (item.startAt && player.current) player.current.currentTime = item.startAt;
-      }}
-      onPlay={() => sync({ paused: false })}
-      onRateChange={() => sync({ rate: player.current?.playbackRate ?? 1 })}
-      onPause={() => {
-        sync({ paused: true });
-        progress.flush();
-      }}
-      onTimeUpdate={() => {
-        const p = player.current;
-        if (!p) return;
-        const t = p.currentTime;
-        trackView(t, p.paused, p.state.duration);
-        progress.tick(t, p.state.duration);
-        if (Date.now() - lastSync.current > 500) {
-          lastSync.current = Date.now();
-          sync({ currentTime: t });
-          if ("mediaSession" in navigator && p.state.duration) {
-            try {
-              navigator.mediaSession.setPositionState({ duration: p.state.duration, position: Math.min(t, p.state.duration), playbackRate: p.state.playbackRate });
-            } catch {}
-          }
-        }
-      }}
-      onEnded={() => {
-        progress.flush();
-        if (sleep.mode === "end") {
-          setSleep({ mode: "off" });
-          sync({ paused: true });
-          return;
-        }
-        next();
-      }}
-    >
-      <MediaProvider />
-      <AudioUI item={item} />
-    </MediaPlayer>
-  );
-}
-
 const SPEEDS = [0.8, 1, 1.25, 1.5, 1.75, 2];
 
-function AudioUI({ item }: { item: PlayerItem }) {
-  const remote = useMediaRemote();
-  const paused = useMediaState("paused");
-  const time = useMediaState("currentTime");
-  const duration = useMediaState("duration") || item.duration;
-  const rate = useMediaState("playbackRate");
-  const { expanded, setExpanded, close, queue, sleep, setSleep, play } = usePlayer();
+function AudioUI({ item, loading }: { item: PlayerItem; loading: boolean }) {
+  const { expanded, setExpanded, close, queue, sleep, setSleep, play, paused, currentTime: time, rate, controls } = usePlayer();
+  const duration = usePlayer((s) => s.duration) || item.duration;
+  // Same calls the old media-remote made, now routed to the shared <audio> element.
+  const remote = {
+    seek: (t: number) => controls?.seek(t),
+    togglePaused: () => controls?.toggle(),
+    changePlaybackRate: (r: number) => controls?.setRate(r),
+  };
   const pct = duration ? (time / duration) * 100 : 0;
   const chapter = item.chapters?.filter((c) => c.start_sec <= time).at(-1);
 
@@ -264,8 +139,7 @@ function AudioUI({ item }: { item: PlayerItem }) {
             <span className="min-w-0">
               <span className="line-clamp-1 block text-[14px] font-medium">{item.title}</span>
               <span className="tnum line-clamp-1 block text-[12px] text-text-2">
-                {chapter ? chapter.title + " · " : ""}
-                {formatDuration(time)} / {formatDuration(duration)}
+                {loading ? "กำลังโหลด…" : `${chapter ? chapter.title + " · " : ""}${formatDuration(time)} / ${formatDuration(duration)}`}
               </span>
             </span>
           </button>

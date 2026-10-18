@@ -5,6 +5,7 @@ import type {
   PublishStatus,
   Visibility,
 } from "@/lib/types";
+import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
 
 /** Plain, serializable shapes passed from Studio server pages to client components. */
 
@@ -103,11 +104,8 @@ export const MEMBER_STATUS_LABEL: Record<MemberStatus, string> = {
 };
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
-  card: "บัตรเครดิต/เดบิต",
-  promptpay: "PromptPay",
+  ...PAYMENT_METHOD_LABEL,
   slip: "แนบสลิป",
-  apple_pay: "Apple Pay",
-  google_pay: "Google Pay",
   manual: "แอดมินต่ออายุ",
 };
 

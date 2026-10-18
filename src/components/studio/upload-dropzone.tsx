@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Clapperboard, CloudUpload, Mic, Smartphone } from "lucide-react";
+import { Clapperboard, CloudUpload, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createUploadAction } from "@/app/studio/actions";
 import { TYPE_LABEL } from "@/lib/format";
@@ -41,12 +41,12 @@ function readMeta(file: File, kind: "video" | "audio") {
 export function UploadDropzone({ defaultType }: { defaultType: ContentType }) {
   const router = useRouter();
   const start = useUploads((s) => s.start);
-  const [type, setType] = React.useState<ContentType>(defaultType);
+  const [type, setType] = React.useState<ContentType>(defaultType === "podcast" ? "podcast" : "video");
   const [over, setOver] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => setType(defaultType), [defaultType]);
+  React.useEffect(() => setType(defaultType === "podcast" ? "podcast" : "video"), [defaultType]);
 
   const handle = async (file: File | undefined) => {
     if (!file || busy) return;
@@ -58,19 +58,8 @@ export function UploadDropzone({ defaultType }: { defaultType: ContentType }) {
     }
     setBusy(file.name);
     const meta = await readMeta(file, isAudio ? "audio" : "video");
-    let finalType: ContentType;
-    let suggestedShort = false;
-    if (isAudio) finalType = "podcast";
-    else if (type === "short") finalType = "short";
-    else {
-      const portrait = !!meta.width && !!meta.height && meta.height > meta.width;
-      const brief = meta.duration !== undefined && meta.duration < 180;
-      if (portrait && brief) {
-        finalType = "short";
-        suggestedShort = true;
-      } else finalType = "video";
-      if (type === "podcast") toast("ไฟล์วิดีโอจะถูกอัปโหลดเป็นวิดีโอ พอดแคสต์ใช้ไฟล์เสียง");
-    }
+    const finalType: ContentType = isAudio ? "podcast" : "video";
+    if (!isAudio && type === "podcast") toast("ไฟล์วิดีโอจะถูกอัปโหลดเป็นวิดีโอ พอดแคสต์ใช้ไฟล์เสียง");
     const r = await createUploadAction({
       type: finalType,
       fileName: file.name,
@@ -83,16 +72,16 @@ export function UploadDropzone({ defaultType }: { defaultType: ContentType }) {
       toast(r.error);
       return;
     }
-    start(r.data, file, { suggestedShort });
+    start(r.data, file);
     router.push(`/studio/content/${r.data.id}/edit`);
   };
 
-  const icons = { video: Clapperboard, short: Smartphone, podcast: Mic } as const;
+  const icons = { video: Clapperboard, podcast: Mic } as const;
 
   return (
     <div>
       <div className="mb-4 inline-flex rounded-full border border-border p-1" role="radiogroup" aria-label="ประเภทที่จะอัปโหลด">
-        {(["video", "short", "podcast"] as const).map((t) => {
+        {(["video", "podcast"] as const).map((t) => {
           const Icon = icons[t];
           return (
             <button
@@ -142,13 +131,15 @@ export function UploadDropzone({ defaultType }: { defaultType: ContentType }) {
             <p className="t-h2 mt-6">ลากไฟล์มาวาง หรือ เลือกไฟล์</p>
             <p className="t-meta mt-2 max-w-sm">
               {type === "podcast"
-                ? "ไฟล์เสียง MP3, M4A หรือ WAV"
-                : "ไฟล์วิดีโอ MP4, MOV หรือ WebM · วิดีโอแนวตั้งที่ยาวไม่ถึง 3 นาที ระบบจะแนะนำให้เป็น Short"}
+                ? "ไฟล์เสียง MP3, M4A หรือ WAV · อัปโหลดสูงสุด 2 GB และอัปโหลดต่อได้หากเน็ตหลุด"
+                : "ไฟล์วิดีโอ MP4, MOV หรือ WebM"}
             </p>
             <Button variant="inverse" size="lg" className="mt-6" onClick={() => inputRef.current?.click()}>
               เลือกไฟล์
             </Button>
-            <p className="t-caption mt-6 text-text-2">ไฟล์จะอัปโหลดตรงไปยังที่เก็บวิดีโอ และอัปโหลดต่อได้หากเน็ตหลุด</p>
+            <p className="t-caption mt-6 text-text-2">
+              {type === "podcast" ? "ไฟล์เสียงจะอัปโหลดตรงไปยังที่เก็บส่วนตัวของเว็บ" : "ไฟล์จะอัปโหลดตรงไปยังที่เก็บวิดีโอ"} และอัปโหลดต่อได้หากเน็ตหลุด
+            </p>
           </>
         )}
         <input

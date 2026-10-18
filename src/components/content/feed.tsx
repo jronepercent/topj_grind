@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { CardSkeleton, PodcastCard, ShortCard, VideoCard, type ProgressMap } from "@/components/cards/cards";
+import { CardSkeleton, PodcastCard, VideoCard, type ProgressMap } from "@/components/cards/cards";
 import { loadFeedAction } from "@/app/actions";
 import type { FeedQuery } from "@/lib/server/queries";
 import type { Content } from "@/lib/types";
@@ -61,18 +61,9 @@ export function InfiniteGrid({
 
   if (!items.length) return <>{empty ?? <EmptyState title="ยังไม่มีคอนเทนต์ในหมวดนี้" body="ลองเลือกหมวดอื่นดูนะ" />}</>;
 
-  const shorts = items.filter((c) => c.type === "short");
-  const rest = items.filter((c) => c.type !== "short");
   return (
     <>
-      {rest.length > 0 && <ContentGrid items={rest} progress={progress} />}
-      {shorts.length > 0 && (
-        <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6", rest.length > 0 && "mt-10")}>
-          {shorts.map((c) => (
-            <ShortCard key={c.id} c={c} />
-          ))}
-        </div>
-      )}
+      <ContentGrid items={items} progress={progress} />
       {!done && (
         <div ref={sentinel} className={cn(GRID, "mt-8")}>
           {[0, 1, 2, 3].map((i) => (

@@ -27,7 +27,7 @@ const TYPE_DESC: Record<HomeSectionType, string> = {
   hero: "Hero",
   continue: "ดูต่อจากที่ค้างไว้ (เฉพาะผู้ที่เข้าสู่ระบบ)",
   latest: "คลิปใหม่ล่าสุดอัตโนมัติ",
-  shorts: "Shorts ล่าสุดอัตโนมัติ",
+  shorts: "บทความล่าสุดอัตโนมัติ",
   podcasts: "พอดแคสต์ล่าสุดอัตโนมัติ",
   playlists: "Playlist และซีรีส์ทั้งหมด",
   custom: "แถบที่เลือกคลิปเอง",

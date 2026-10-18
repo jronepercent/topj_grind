@@ -14,7 +14,9 @@ import {
   runScheduler,
 } from "@/lib/server/mutations";
 import { CATALOG_TAG, isLive, isUuid } from "@/lib/server/queries";
+import { randomUUID } from "node:crypto";
 import { bunnyStreamEnabled, createBunnyUpload, syncBunnyStatus } from "@/lib/server/bunny";
+import { PODCAST_BUCKET, removeAudioObjects } from "@/lib/server/media";
 import { signImageUpload, storeImage } from "@/lib/server/images";
 import { isValidUrl } from "@/lib/richtext";
 import { HERO_LIMITS, HERO_MAX_SLIDES, isHeroHref } from "@/lib/hero";
@@ -41,11 +43,13 @@ function refreshSite(path: string = "/", type: "layout" | "page" = "layout") {
   revalidatePath(path, type);
 }
 
-const DEMO_MEDIA: Record<ContentType, string> = {
-  video: "https://test-streams.mux.dev/tos_ismc/main.m3u8",
-  short: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-  podcast: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
-};
+/** Sample stream for videos when Bunny isn't configured (local dev). Podcasts never use a sample: they are real uploads. */
+const DEMO_VIDEO = "https://test-streams.mux.dev/tos_ismc/main.m3u8";
+
+/** New uploads can only be these; existing Short rows stay readable. */
+const UPLOADABLE: ContentType[] = ["video", "podcast"];
+const AUDIO_EXT = /^[a-z0-9]{1,5}$/;
+const MAX_AUDIO_SEC = 24 * 3600;
 
 /** Full row (incl. trash and media locations) — server only. */
 async function row(id: string): Promise<ContentRow> {
@@ -73,17 +77,34 @@ const uuids = (ids: string[]) => [...new Set(ids.filter(isUuid))];
 // ───────── Upload ─────────
 export interface UploadTicket {
   id: string;
-  mode: "bunny" | "demo";
+  mode: "bunny" | "supabase" | "demo";
   tus?: { endpoint: string; videoId: string; libraryId: string; signature: string; expire: number };
+  /** Podcast audio: resumable (TUS) upload straight to the private Supabase Storage bucket. */
+  supabase?: { bucket: string; objectName: string; endpoint: string };
 }
+
+/** A fresh, unguessable object name for one upload of this episode (a re-upload never overwrites the live file). */
+function newAudioTicket(id: string, fileName: string): NonNullable<UploadTicket["supabase"]> {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+  return {
+    bucket: PODCAST_BUCKET,
+    objectName: `episodes/${id}/${randomUUID()}.${AUDIO_EXT.test(ext) ? ext : "mp3"}`,
+    // Supabase recommends the dedicated storage hostname for large uploads (hosted projects only).
+    endpoint: `${base.replace(/^(https:\/\/[a-z0-9]+)\.supabase\.co$/, "$1.storage.supabase.co")}/storage/v1/upload/resumable`,
+  };
+}
+
+const sanitizeDuration = (d: unknown) => (typeof d === "number" && Number.isFinite(d) && d > 0 ? Math.min(Math.round(d), MAX_AUDIO_SEC) : 0);
 
 /** Step 1 of upload: create a draft row immediately so nothing is ever lost. */
 export async function createUploadAction(input: { type: ContentType; fileName: string; width?: number; height?: number; duration?: number }) {
   return admin(async (a) => {
-    if (!["video", "short", "podcast"].includes(input.type)) throw new HttpError(400, "ประเภทไฟล์ไม่ถูกต้อง");
+    if (!UPLOADABLE.includes(input.type)) throw new HttpError(400, "ประเภทไฟล์ไม่ถูกต้อง");
     const title = input.fileName.replace(/\.[^.]+$/, "").slice(0, 100);
     let tus: UploadTicket["tus"];
-    if (input.type !== "podcast" && bunnyStreamEnabled()) tus = await createBunnyUpload(title || input.fileName);
+    if (input.type === "video" && bunnyStreamEnabled()) tus = await createBunnyUpload(title || input.fileName);
     const created = must(
       await adminDb()
         .from("content")
@@ -91,7 +112,7 @@ export async function createUploadAction(input: { type: ContentType; fileName: s
           type: input.type,
           title,
           description: "",
-          duration_sec: Math.round(input.duration ?? 0),
+          duration_sec: sanitizeDuration(input.duration),
           width: input.width ? Math.round(input.width) : null,
           height: input.height ? Math.round(input.height) : null,
           visibility: "public",
@@ -104,24 +125,59 @@ export async function createUploadAction(input: { type: ContentType; fileName: s
       "create content",
     ) as { id: string };
     await audit(a.id, "content.create", "content", created.id);
-    const ticket: UploadTicket = tus ? { id: created.id, mode: "bunny", tus } : { id: created.id, mode: "demo" };
+    const ticket: UploadTicket =
+      input.type === "podcast"
+        ? { id: created.id, mode: "supabase", supabase: newAudioTicket(created.id, input.fileName) }
+        : tus
+          ? { id: created.id, mode: "bunny", tus }
+          : { id: created.id, mode: "demo" };
     return ticket;
   });
 }
 
-/** Called when the browser finishes uploading. Bunny mode then waits for the webhook (or status polling). */
-export async function uploadFinishedAction(id: string) {
+/** The uploaded audio object must exist in the bucket and not be empty. */
+async function audioObjectExists(objectName: string) {
+  const slash = objectName.lastIndexOf("/");
+  const folder = objectName.slice(0, slash);
+  const name = objectName.slice(slash + 1);
+  const { data, error } = await adminDb().storage.from(PODCAST_BUCKET).list(folder, { search: name, limit: 10 });
+  if (error) throw new Error(`storage: ${error.message}`);
+  const found = data?.find((o) => o.name === name);
+  const size = Number((found?.metadata as { size?: number } | null)?.size ?? 0);
+  return !!found && size > 0;
+}
+
+/**
+ * Called when the browser finishes uploading. A podcast is ready right here (the file is verified in Storage);
+ * Bunny video then waits for the webhook (or status polling).
+ */
+export async function uploadFinishedAction(id: string, info?: { objectName?: string; duration_sec?: number }) {
   return admin(async () => {
     const c = await row(id);
+    if (c.type === "podcast") {
+      const objectName = info?.objectName ?? "";
+      if (!objectName.startsWith(`episodes/${id}/`) || objectName.includes("..") || objectName.length > 200) {
+        throw new HttpError(400, "ไฟล์เสียงไม่ถูกต้อง");
+      }
+      if (c.media_status === "ready" && c.audio_path === objectName) return "ready" as MediaStatus;
+      if (!(await audioObjectExists(objectName))) throw new HttpError(409, "ไม่พบไฟล์เสียงใน Storage กรุณาอัปโหลดใหม่");
+      const duration = sanitizeDuration(info?.duration_sec) || c.duration_sec;
+      const next = await updateRow(id, { audio_path: objectName, demo_src: null, media_status: "ready", duration_sec: duration });
+      // A re-upload replaces the previous file only now that the new one is confirmed.
+      if (c.audio_path && c.audio_path !== objectName) await removeAudioObjects([c.audio_path]);
+      await finalizeIfReady(next);
+      refreshSite();
+      return "ready" as MediaStatus;
+    }
     if (c.media_status === "ready") return "ready" as MediaStatus;
     if (c.bunny_video_id) {
       await updateRow(id, { media_status: "processing" });
     } else {
-      // No transcoder (podcasts, or Bunny not configured): a sample source, then mediaStatusAction marks it ready.
+      // Bunny not configured (local dev): a sample source, then mediaStatusAction marks it ready.
       await updateRow(id, {
         media_status: "processing",
-        demo_src: DEMO_MEDIA[c.type],
-        duration_sec: c.duration_sec || (c.type === "short" ? 15 : c.type === "podcast" ? 420 : 734),
+        demo_src: DEMO_VIDEO,
+        duration_sec: c.duration_sec || 734,
       });
     }
     return "processing" as MediaStatus;
@@ -176,7 +232,9 @@ export interface ContentInput {
   tags?: string[];
   visibility?: Visibility;
   comments_enabled?: boolean;
+  /** @deprecated Shorts are gone: still accepted so older editor builds type-check, but ignored. */
   linked_content_id?: string | null;
+  /** @deprecated see linked_content_id */
   linked_start_sec?: number | null;
   captions_vtt?: string | null;
   links?: { label: string; url: string }[];
@@ -204,10 +262,9 @@ export async function saveContentAction(id: string, input: ContentInput) {
       patch.description = input.description;
     }
     if (input.type !== undefined) {
-      if (!["video", "short", "podcast"].includes(input.type)) throw new HttpError(400, "ประเภทไม่ถูกต้อง");
+      if (!UPLOADABLE.includes(input.type) && input.type !== c.type) throw new HttpError(400, "ประเภทไม่ถูกต้อง");
       patch.type = input.type;
     }
-    const type = patch.type ?? c.type;
     if (input.thumbnail_url !== undefined) patch.thumbnail_url = await storeImage(input.thumbnail_url, `content/${id}`);
     if (input.category_id !== undefined) {
       if (input.category_id && !isUuid(input.category_id)) throw new HttpError(400, "หมวดหมู่ไม่ถูกต้อง");
@@ -221,14 +278,6 @@ export async function saveContentAction(id: string, input: ContentInput) {
       patch.visibility = input.visibility;
     }
     if (input.comments_enabled !== undefined) patch.comments_enabled = !!input.comments_enabled;
-    if (input.linked_content_id !== undefined) {
-      const linked = type === "short" ? input.linked_content_id || null : null;
-      if (linked && (!isUuid(linked) || linked === id)) throw new HttpError(400, "คลิปที่ลิงก์ไม่ถูกต้อง");
-      patch.linked_content_id = linked;
-    }
-    if (input.linked_start_sec !== undefined) {
-      patch.linked_start_sec = input.linked_start_sec == null ? null : Math.max(0, Math.round(input.linked_start_sec));
-    }
     if (input.captions_vtt !== undefined) patch.captions_vtt = input.captions_vtt?.trim() ? input.captions_vtt : null;
 
     if (input.links !== undefined) {
@@ -322,7 +371,8 @@ export async function bulkContentAction(ids: string[], op: "public" | "members" 
       must(await db.from("content").update({ deleted_at: null, updated_at: now }).in("id", list), "restore");
     } else if (op === "purge") {
       // Only rows already in the trash. Links, playlist items, comments… go with them (on delete cascade).
-      must(await db.from("content").delete().in("id", list).not("deleted_at", "is", null), "purge");
+      const gone = must(await db.from("content").delete().in("id", list).not("deleted_at", "is", null).select("audio_path"), "purge") as { audio_path: string | null }[];
+      await removeAudioObjects(gone.map((g) => g.audio_path));
     } else {
       throw new HttpError(400, "คำสั่งไม่ถูกต้อง");
     }
@@ -553,7 +603,6 @@ const SETTING_KEYS: (keyof SiteSettings)[] = [
   "socials",
   "paywall_title",
   "paywall_benefits",
-  "price_thb",
 ];
 
 export async function saveSettingsAction(input: Partial<SiteSettings>) {
@@ -707,12 +756,21 @@ export async function contentStatsAction(id: string) {
 }
 
 /** "ล้มเหลว — อัปโหลดใหม่": issue a fresh upload ticket for an existing row (keeps all details). */
-export async function reuploadAction(id: string) {
+export async function reuploadAction(id: string, fileName = "") {
   return admin(async (a) => {
     const c = await row(id);
-    let tus: UploadTicket["tus"];
-    if (c.type !== "podcast" && bunnyStreamEnabled()) tus = await createBunnyUpload(c.title || "untitled");
     const wasLive = isLive(c);
+    if (c.type === "podcast") {
+      // audio_path keeps pointing at the current file until uploadFinishedAction confirms the new one.
+      const supabase = newAudioTicket(id, fileName);
+      await updateRow(id, { media_status: "uploading", demo_src: null });
+      await audit(a.id, "content.reupload", "content", id);
+      if (wasLive) refreshSite();
+      const ticket: UploadTicket = { id, mode: "supabase", supabase };
+      return ticket;
+    }
+    let tus: UploadTicket["tus"];
+    if (bunnyStreamEnabled()) tus = await createBunnyUpload(c.title || "untitled");
     await updateRow(id, { media_status: "uploading", demo_src: null, bunny_video_id: tus?.videoId ?? null });
     await audit(a.id, "content.reupload", "content", id);
     if (wasLive) refreshSite();

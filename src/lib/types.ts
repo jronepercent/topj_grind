@@ -33,6 +33,8 @@ export interface Payment {
   currency: string;
   months: number;
   method: PaymentMethod;
+  /** "monthly" | "yearly" — null on older payments and manual extensions (see src/lib/plans.ts) */
+  plan?: string | null;
   reference: string;
   paid_at: string;
   raw: unknown;
@@ -259,7 +261,6 @@ export interface SiteSettings {
   socials: { key: string; label: string; url: string }[];
   paywall_title: string;
   paywall_benefits: string[];
-  price_thb: number;
 }
 
 /** Viewer as seen by the client. */

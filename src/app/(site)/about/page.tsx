@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { AtSign, BadgeCheck, ExternalLink, Globe, Headphones, MessageCircle, SquarePlay, Zap } from "lucide-react";
+import { AtSign, BadgeCheck, ExternalLink, Globe, Headphones, MessageCircle, SquarePlay } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
 import { countContent, siteSettings } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ export default async function AboutPage() {
   const viewer = await getViewer();
   const counts = [
     { label: "วิดีโอ", n: await countContent("video"), Icon: SquarePlay },
-    { label: "Shorts", n: await countContent("short"), Icon: Zap },
     { label: "พอดแคสต์", n: await countContent("podcast"), Icon: Headphones },
   ];
   const socials = s.socials.filter((x) => /^https?:\/\//i.test(x.url));

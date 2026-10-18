@@ -19,7 +19,6 @@ export function ShellClient({ unread, demo, children }: { unread: number; demo: 
   const hasMini = usePlayer((s) => !!s.item);
   // Watch page uses the full width (sidebar becomes a drawer), like YouTube.
   const isWatch = pathname.startsWith("/watch");
-  const isShorts = pathname.startsWith("/shorts");
 
   return (
     <>
@@ -32,19 +31,15 @@ export function ShellClient({ unread, demo, children }: { unread: number; demo: 
         <ExpiryBanner />
         <main
           id="main"
-          className={cn("min-h-[calc(100dvh-56px)]", !isShorts && "pb-24 sm:pb-12", hasMini && !isShorts && "pb-40 sm:pb-28")}
+          className={cn("min-h-[calc(100dvh-56px)] pb-24 sm:pb-12", hasMini && "pb-40 sm:pb-28")}
         >
           {children}
         </main>
       </div>
       {hasMini && <GlobalPlayer />}
       <ShareDialog />
-      <BottomTabs dark={isShorts} />
-      {demo && (
-        <div className={cn(isShorts && "hidden sm:block")}>
-          <DemoSwitcher />
-        </div>
-      )}
+      <BottomTabs />
+      {demo && <DemoSwitcher />}
     </>
   );
 }

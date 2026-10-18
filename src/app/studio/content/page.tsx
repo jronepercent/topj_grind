@@ -14,7 +14,7 @@ export default async function StudioContentPage({ searchParams }: { searchParams
     <div>
       <PageHeader
         title="คอนเทนต์"
-        description="วิดีโอ Shorts และพอดแคสต์ทั้งหมดของช่อง"
+        description="วิดีโอและพอดแคสต์ทั้งหมดของช่อง"
         action={
           <Button asChild variant="inverse">
             <Link href="/studio/upload">

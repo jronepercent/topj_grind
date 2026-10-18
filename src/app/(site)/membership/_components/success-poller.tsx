@@ -2,10 +2,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Clock, FlaskConical, MessageCircle } from "lucide-react";
+import { Bell, Check, Clock, FlaskConical, MessageCircle, RefreshCw } from "lucide-react";
 import { membershipStatusAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { thaiDate } from "@/lib/format";
+import { METHODS, PLANS, type CheckoutMethod, type PlanCode } from "@/lib/plans";
 import { PAY_FROM_KEY } from "./pay-button";
 
 const INTERVAL = 3_000;
@@ -20,6 +21,8 @@ export function SuccessPoller({
   isMember,
   lineUrl,
   demoEmail,
+  plan,
+  method,
 }: {
   from: string | null;
   justPaid: boolean;
@@ -27,6 +30,9 @@ export function SuccessPoller({
   isMember: boolean;
   lineUrl: string | null;
   demoEmail: string | null;
+  /** From the checkout link — display only. The real plan is whatever the confirmed payment says. */
+  plan: PlanCode | null;
+  method: CheckoutMethod | null;
 }) {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>(justPaid ? "done" : "pending");
@@ -104,6 +110,7 @@ export function SuccessPoller({
             <span className="relative size-14 animate-pulse rounded-full bg-member/25" />
           </span>
           <h1 className="t-h1 mt-8">กำลังยืนยันการชำระเงิน…</h1>
+          {plan && <p className="mt-3 text-[15px] font-medium">{PLANS[plan].name} · {PLANS[plan].price.toLocaleString("th-TH")} บาท</p>}
           <p className="t-meta mt-2 max-w-sm">ปกติใช้เวลาไม่ถึง 1 นาที เปิดหน้านี้ค้างไว้ได้เลย เราจะอัปเดตให้อัตโนมัติ</p>
           <div className="mt-8 w-full max-w-[320px] space-y-2.5" aria-hidden>
             <div className="skeleton h-3 rounded-full" />
@@ -123,7 +130,36 @@ export function SuccessPoller({
               สมาชิกถึงวันที่ <span className="font-semibold">{thaiDate(expires)}</span>
             </p>
           )}
-          <p className="t-meta mt-2">ทุกคลิป ทุกตอน และไฟล์ประกอบ ปลดล็อกแล้ว</p>
+          <p className="t-meta mt-2">
+            {plan ? `${PLANS[plan].name} · ` : ""}ทุกคลิป ทุกตอน และไฟล์ประกอบ ปลดล็อกแล้ว
+          </p>
+          {expires && (
+            <ul className="mt-6 w-full max-w-[380px] space-y-3 rounded-[16px] border border-border bg-surface p-4 text-left text-[14px]">
+              {method === "promptpay" ? (
+                <>
+                  <li className="flex gap-3">
+                    <Bell className="mt-0.5 size-4 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+                    <span>{METHODS.promptpay.label} จ่ายครั้งเดียว ไม่ต่ออายุอัตโนมัติ เราจะแจ้งเตือนก่อนหมดอายุ</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <RefreshCw className="mt-0.5 size-4 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+                    <span>ต่ออายุเองได้ทุกเมื่อ วันที่เหลือจะไม่หาย</span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li className="flex gap-3">
+                    <RefreshCw className="mt-0.5 size-4 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+                    <span>จ่ายด้วยบัตร ระบบจะต่ออายุให้อัตโนมัติในวันที่ {thaiDate(expires)} ไม่ต้องทำอะไรเพิ่ม</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <Bell className="mt-0.5 size-4 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+                    <span>ดูสถานะและประวัติการชำระเงินได้ที่หน้าบัญชี ยกเลิกต่ออายุอัตโนมัติได้ทุกเมื่อ</span>
+                  </li>
+                </>
+              )}
+            </ul>
+          )}
           <div className="mt-8 flex w-full flex-col gap-2 sm:w-auto">
             <Button asChild variant="member" size="lg" className="min-w-[220px]">
               <Link href={dest}>เริ่มดูเลย</Link>
@@ -173,7 +209,7 @@ export function SuccessPoller({
           </p>
           <p className="mt-1.5 text-text-2">จำลองการชำระเงินด้วยคำสั่งนี้ในเทอร์มินัล แล้วหน้านี้จะอัปเดตเอง:</p>
           <code className="mt-2 block select-all overflow-x-auto whitespace-nowrap rounded-[10px] bg-hover px-3 py-2 font-mono text-[12px] text-text">
-            npm run webhook:test -- {demoEmail}
+            npm run webhook:test -- {demoEmail} {plan ?? "monthly"} {method ?? "card"}
           </code>
         </aside>
       )}

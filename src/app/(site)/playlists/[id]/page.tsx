@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, Headphones, Lock, Play, RotateCcw, Zap } from "lucide-react";
+import { Check, Headphones, Lock, Play, RotateCcw } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
 import { getPlaylist, playlistItems, progressMap } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
@@ -140,7 +140,6 @@ export default async function PlaylistPage({ params }: { params: Params }) {
                     <span className="min-w-0 flex-1">
                       <span className="line-clamp-2 text-[14px] font-semibold leading-5 sm:text-[15px] sm:leading-[21px]">{c.title}</span>
                       <span className="t-meta tnum mt-1 flex items-center gap-1.5">
-                        {c.type === "short" && <Zap className="size-3" aria-hidden />}
                         {c.type === "podcast" && <Headphones className="size-3" aria-hidden />}
                         {TYPE_LABEL[c.type]} · {formatLongDuration(c.duration_sec)}
                         {completed && <span className="text-success">· ดูจบแล้ว</span>}

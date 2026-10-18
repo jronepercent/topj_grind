@@ -6,6 +6,8 @@ import { ImagePlus, Play, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
 import { runSchedulerAction, saveBannedWordsAction, saveCategoriesAction, saveSettingsAction } from "@/app/studio/actions";
+import { formatNumber } from "@/lib/format";
+import { PLANS } from "@/lib/plans";
 import { isValidUrl } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
 import type { SiteSettings } from "@/lib/types";
@@ -296,7 +298,6 @@ function PaywallCard({ settings }: { settings: SiteSettings }) {
     () => ({
       paywall_title: settings.paywall_title,
       benefits: settings.paywall_benefits.map((b) => ({ k: rid(), v: b })),
-      price: String(settings.price_thb),
     }),
     [settings],
   );
@@ -304,11 +305,10 @@ function PaywallCard({ settings }: { settings: SiteSettings }) {
   const [base, setBase] = React.useState(JSON.stringify(init));
   const [busy, setBusy] = React.useState(false);
   const dirty = JSON.stringify(f) !== base;
-  const price = Number(f.price);
 
   return (
     <Card>
-      <CardHeader title="Paywall และราคา" description="ข้อความบนการ์ดสมัครสมาชิก" />
+      <CardHeader title="Paywall" description="ข้อความบนการ์ดสมัครสมาชิก" />
       <div className="space-y-5 px-5 pb-5 pt-4">
         <Field label="หัวข้อ Paywall" counter={`${f.paywall_title.length}/80`}>
           <input value={f.paywall_title} onChange={(e) => setF((x) => ({ ...x, paywall_title: e.target.value.slice(0, 80) }))} className={inputClass} />
@@ -334,24 +334,19 @@ function PaywallCard({ settings }: { settings: SiteSettings }) {
             <Plus /> เพิ่มข้อ
           </Button>
         </div>
-        <div className="max-w-[220px]">
-          <Field label="ราคาที่แสดง (บาท / 30 วัน)">
-            <input type="number" min={0} step={1} value={f.price} onChange={(e) => setF((x) => ({ ...x, price: e.target.value }))} className={cn(inputClass, "tnum")} />
-          </Field>
-        </div>
-        <p className="t-caption text-text-2">ราคานี้ใช้แสดงผลเท่านั้น ยอดเงินจริงมาจากระบบชำระเงิน</p>
+        <p className="t-caption text-text-2">
+          ราคาแพ็กเกจกำหนดตายตัวในระบบ: รายเดือน {formatNumber(PLANS.monthly.price)} บาท ({PLANS.monthly.days} วัน) และรายปี {formatNumber(PLANS.yearly.price)} บาท ({PLANS.yearly.days} วัน)
+        </p>
       </div>
       <SaveRow
         busy={busy}
         dirty={dirty}
         onSave={async () => {
           if (!f.paywall_title.trim()) return void toast("กรุณาใส่หัวข้อ Paywall");
-          if (!Number.isFinite(price) || price < 0) return void toast("ราคาไม่ถูกต้อง");
           setBusy(true);
           const r = await saveSettingsAction({
             paywall_title: f.paywall_title.trim(),
             paywall_benefits: f.benefits.map((b) => b.v.trim()).filter(Boolean),
-            price_thb: Math.round(price),
           });
           setBusy(false);
           if (!r.ok) return void toast(r.error);

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Headphones, Lock, Smartphone } from "lucide-react";
+import { Headphones, Lock } from "lucide-react";
 import { formatDuration, formatNumber, TYPE_LABEL, thaiDate, thaiDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ContentType, MediaStatus, PublishStatus, Visibility } from "@/lib/types";
@@ -81,10 +81,10 @@ export function StudioThumb({
   type: ContentType;
   duration?: number;
   className?: string;
-  /** true = use the type's own ratio (9:16 Short, 1:1 podcast); default is a uniform 16:9 frame. */
+  /** true = use the type's own ratio (1:1 podcast); default is a uniform 16:9 frame. */
   natural?: boolean;
 }) {
-  const ratio = !natural ? "aspect-video" : type === "short" ? "aspect-[9/16]" : type === "podcast" ? "aspect-square" : "aspect-video";
+  const ratio = !natural ? "aspect-video" : type === "podcast" ? "aspect-square" : "aspect-video";
   return (
     <div className={cn("relative shrink-0 overflow-hidden rounded-[8px] bg-elevated", ratio, className)}>
       <div className="flex size-full items-center justify-center">
@@ -93,8 +93,6 @@ export function StudioThumb({
           <img src={src} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" />
         ) : type === "podcast" ? (
           <Headphones className="size-5 text-text-2" strokeWidth={1.75} aria-hidden />
-        ) : type === "short" ? (
-          <Smartphone className="size-5 text-text-2" strokeWidth={1.75} aria-hidden />
         ) : null}
         {!!duration && (
           <span className="tnum absolute bottom-1 right-1 rounded bg-black/75 px-1 text-[10px] font-medium leading-4 text-white">

@@ -14,7 +14,11 @@ function validSignature(raw: string, header: string | null, secret: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Payment Integration Contract (spec §9.1). */
+/**
+ * Payment Integration Contract (spec §9.1). Body: { email | user_id, plan: "monthly" | "yearly", amount, currency: "THB",
+ * method, reference, paid_at }. `plan` sets the period (30 / 365 days) and the amount we expect (see src/lib/plans.ts);
+ * a wrong amount is logged to payment_errors and nothing is granted. Legacy `months` is still accepted instead of `plan`.
+ */
 export async function POST(req: Request) {
   const secret = process.env.PAYMENT_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: "webhook not configured" }, { status: 500 });
@@ -34,6 +38,8 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid json" }, { status: 400 });
 
   const result = await applyPayment(body, body);
   if (result.status !== 200) return NextResponse.json({ error: result.error }, { status: result.status });

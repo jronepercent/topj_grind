@@ -11,7 +11,7 @@ import Link from "next/link";
 
 interface Ctx {
   viewer: Viewer | null;
-  settings: Pick<SiteSettings, "channel_name" | "avatar_url" | "price_thb" | "paywall_title" | "paywall_benefits">;
+  settings: Pick<SiteSettings, "channel_name" | "avatar_url" |"paywall_title" | "paywall_benefits">;
   /** Returns true when signed in, otherwise opens the sign-in prompt. */
   requireAuth: (reason?: string) => boolean;
   openPaywall: (thumb?: string | null) => void;

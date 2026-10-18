@@ -3,12 +3,13 @@ import { revalidateTag } from "next/cache";
 import { adminDb, must, userDb } from "@/lib/supabase/clients";
 import { HttpError } from "./auth";
 import { CATALOG_TAG, getContentRow, isLive, isUuid } from "./queries";
+import { removeAudioObjects } from "@/lib/server/media";
 import { contentHref, thaiDate } from "@/lib/format";
 import { COMPLETE_RATIO, viewThresholdSec } from "@/lib/view-rules";
+import { CURRENCY, PLANS, isPaymentMethod, isPlanCode, type PlanCode } from "@/lib/plans";
 import type { ContentRow, Notification, PaymentMethod, Viewer } from "@/lib/types";
 
 const DAY = 86_400_000;
-export const MEMBERSHIP_DAYS = Number(process.env.MEMBERSHIP_DAYS ?? 30);
 const nowIso = () => new Date().toISOString();
 
 /** Turn database errors from RLS / guard triggers into messages people understand. */
@@ -61,7 +62,7 @@ export async function finalizeIfReady(c: ContentRow) {
 }
 
 // ───────────────────────── Membership ─────────────────────────
-/** new_expires_at = max(now, current_expires_at) + 30 days × months */
+/** new_expires_at = max(now, current_expires_at) + days */
 export function extendFrom(current: string | null, days: number, now = Date.now()) {
   const base = Math.max(now, current ? new Date(current).getTime() : 0);
   return new Date(base + days * DAY).toISOString();
@@ -72,7 +73,10 @@ export interface PaymentPayload {
   email?: string;
   amount: number;
   currency: string;
-  months: number;
+  /** Preferred: which plan was bought. Period and expected amount come from src/lib/plans.ts. */
+  plan?: PlanCode;
+  /** Legacy: whole months of 30 days, priced at the monthly rate. Ignored when `plan` is sent. */
+  months?: number;
   method: PaymentMethod;
   reference: string;
   paid_at: string;
@@ -84,10 +88,40 @@ export type PaymentResult = { status: 200; expires_at: string; duplicate: boolea
 export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<PaymentResult> {
   if (!p || typeof p.reference !== "string" || !p.reference) return { status: 400, error: "missing reference" };
   const db = adminDb();
-  const months = Math.max(1, Math.floor(Number(p.months) || 1));
+  const reject = async (reason: string, error: string): Promise<PaymentResult> => {
+    await db.from("payment_errors").insert({ payload: raw, reason });
+    return { status: 400, error };
+  };
+
+  // What was bought: a plan (exact days) or, for old integrations, N × 30-day months at the monthly price.
+  let plan: PlanCode | null = null;
+  let months: number;
+  let days: number;
+  let expected: number;
+  if (p.plan !== undefined && p.plan !== null) {
+    if (!isPlanCode(p.plan)) return reject(`แพ็กเกจไม่ถูกต้อง: ${String(p.plan).slice(0, 40)}`, "invalid plan");
+    plan = p.plan;
+    months = PLANS[plan].months;
+    days = PLANS[plan].days;
+    expected = PLANS[plan].price;
+  } else {
+    months = Math.min(36, Math.max(1, Math.floor(Number(p.months) || 1)));
+    days = PLANS.monthly.days * months;
+    expected = PLANS.monthly.price * months;
+  }
+  if (!isPaymentMethod(p.method)) return reject(`ช่องทางชำระเงินไม่ถูกต้อง: ${String(p.method).slice(0, 40)}`, "invalid method");
 
   const dup = await db.from("payments").select("user_id").eq("reference", p.reference).maybeSingle();
   const duplicate = !!dup.data;
+
+  // A replay of an already-recorded reference was validated the first time; don't re-judge it.
+  if (!duplicate) {
+    const amount = Number(p.amount);
+    const currency = (p.currency || CURRENCY).toUpperCase();
+    if (currency !== CURRENCY || !Number.isFinite(amount) || Math.abs(amount - expected) > 0.005) {
+      return reject(`ยอดเงินไม่ตรงกับแพ็กเกจ: ได้รับ ${p.amount} ${p.currency || ""} คาดว่า ${expected} ${CURRENCY} (${plan ?? `${months} เดือน`})`, "amount mismatch");
+    }
+  }
 
   let userId: string | null = null;
   if (p.user_id && isUuid(p.user_id)) {
@@ -104,15 +138,17 @@ export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<Pay
     return { status: 404, error: "user not found" };
   }
 
+  // Legacy payloads call the original 8-argument form, so they keep working before 0010_plans.sql is applied.
   const { data, error } = await db.rpc("apply_payment", {
     p_user_id: userId,
     p_amount: Number(p.amount) || 0,
-    p_currency: p.currency || "THB",
+    p_currency: p.currency || CURRENCY,
     p_months: months,
     p_method: p.method,
     p_reference: p.reference,
     p_paid_at: p.paid_at || nowIso(),
     p_raw: raw as object,
+    ...(plan ? { p_days: days, p_plan: plan } : {}),
   });
   if (error) throw new Error(`apply_payment: ${error.message}`);
   return { status: 200, expires_at: data as string, duplicate };
@@ -126,7 +162,7 @@ export async function manualExtend(admin: Viewer, userId: string, opts: { days?:
   if (!note.trim()) throw new HttpError(400, "ต้องใส่หมายเหตุ");
   const db = adminDb();
   const { data: sub } = await db.from("subscriptions").select("expires_at, first_paid_at").eq("user_id", userId).maybeSingle();
-  const expires_at = opts.until ? new Date(opts.until).toISOString() : extendFrom(sub?.expires_at ?? null, opts.days ?? MEMBERSHIP_DAYS);
+  const expires_at = opts.until ? new Date(opts.until).toISOString() : extendFrom(sub?.expires_at ?? null, opts.days ?? PLANS.monthly.days);
   must(
     await db
       .from("subscriptions")
@@ -353,6 +389,8 @@ export async function runScheduler(withReminders = false) {
   }
   if (withReminders) must(await db.rpc("expiry_reminders"), "expiry_reminders");
   const cutoff = new Date(Date.now() - 30 * DAY).toISOString();
-  const purged = must(await db.from("content").delete().lt("deleted_at", cutoff).select("id"), "purge");
+  const purged = must(await db.from("content").delete().lt("deleted_at", cutoff).select("id, audio_path"), "purge") as { id: string; audio_path: string | null }[];
+  // Best-effort: drop the podcast files of the purged rows too (removeAudioObjects logs and never throws).
+  await removeAudioObjects(purged.map((p) => p.audio_path)).catch((e) => console.error("purge audio cleanup:", e));
   return { published: due.map((d) => d.id), purged: purged.length, reminders: withReminders };
 }

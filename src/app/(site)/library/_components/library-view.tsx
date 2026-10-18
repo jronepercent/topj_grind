@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { Headphones, Trash2, X, Zap } from "lucide-react";
+import { Headphones, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { clearHistoryAction, setSaveHistoryAction, toggleSaveAction } from "@/app/actions";
 import { PlaylistCard, Thumb, VideoCard, type ProgressMap } from "@/components/cards/cards";
@@ -345,7 +345,7 @@ function LibRow({ c, progress, onRemove, removeLabel }: { c: Content; progress: 
           {c.visibility === "members" && <MemberBadge locked={locked} className={cn("absolute left-2 top-2", !locked && "bg-black/60 backdrop-blur")} />}
           {c.type !== "video" && (
             <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
-              {c.type === "short" ? <Zap className="size-3" /> : <Headphones className="size-3" />} {TYPE_LABEL[c.type]}
+              <Headphones className="size-3" /> {TYPE_LABEL[c.type]}
             </span>
           )}
           <span className="tnum absolute bottom-1.5 right-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-white">

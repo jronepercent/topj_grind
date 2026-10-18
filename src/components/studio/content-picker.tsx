@@ -38,7 +38,7 @@ export function ContentPickerList({
       (type === "all" || it.type === type) &&
       (!q.trim() || norm(it.title).includes(norm(q.trim()))),
   );
-  const typeOptions = (types ?? (["video", "short", "podcast"] as ContentType[]));
+  const typeOptions = (types ?? (["video", "podcast"] as ContentType[]));
   return (
     <div>
       <div className="relative">

@@ -11,10 +11,11 @@ import {
   LayoutDashboard,
   ListVideo,
   MessageSquare,
+  MessagesSquare,
   Mic,
+  Newspaper,
   Plus,
   Settings,
-  Smartphone,
   Users,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
@@ -29,6 +30,8 @@ const NAV = [
   { href: "/studio/content", label: "คอนเทนต์", icon: Clapperboard },
   { href: "/studio/playlists", label: "Playlist", icon: ListVideo },
   { href: "/studio/comments", label: "ความคิดเห็น", icon: MessageSquare },
+  { href: "/studio/community", label: "ชุมชน", icon: MessagesSquare },
+  { href: "/studio/articles", label: "บทความ", icon: Newspaper },
   { href: "/studio/members", label: "สมาชิก", icon: Users },
   { href: "/studio/home", label: "จัดหน้า Home", icon: House },
   { href: "/studio/settings", label: "ตั้งค่า", icon: Settings },
@@ -157,16 +160,21 @@ function CreateMenu() {
           </Link>
         </DropdownItem>
         <DropdownItem asChild>
-          <Link href="/studio/upload?type=short">
-            <Smartphone /> อัปโหลด Short
-          </Link>
-        </DropdownItem>
-        <DropdownItem asChild>
           <Link href="/studio/upload?type=podcast">
             <Mic /> อัปโหลดพอดแคสต์
           </Link>
         </DropdownItem>
         <DropdownSeparator />
+        <DropdownItem asChild>
+          <Link href="/studio/community">
+            <MessagesSquare /> โพสต์รูปในชุมชน
+          </Link>
+        </DropdownItem>
+        <DropdownItem asChild>
+          <Link href="/studio/articles/new">
+            <Newspaper /> เขียนบทความ
+          </Link>
+        </DropdownItem>
         <DropdownItem asChild>
           <Link href="/studio/playlists?new=1">
             <BookOpen /> สร้าง Playlist

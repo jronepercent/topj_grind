@@ -37,7 +37,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
   const viewer = await getViewer();
   const c = await getContent(id, viewer);
   if (!c) notFound();
-  if (c.type === "short") redirect(`/shorts/${id}`);
+  if (c.type === "short") redirect("/community");
   if (c.type === "podcast") redirect(`/podcasts/${id}`);
 
   const locked = !canWatch(viewer, c);

@@ -44,6 +44,7 @@ export default async function AccountPage() {
     amount: p.amount,
     currency: p.currency,
     months: p.months,
+    plan: p.plan ?? null,
     method: p.method,
     reference: p.reference,
   }));

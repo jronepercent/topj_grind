@@ -64,6 +64,7 @@ export function useMediaPhase(id: string, initial: MediaStatus) {
 export function MediaStrip({ id, initial, type }: { id: string; initial: MediaStatus; type: ContentType }) {
   const { phase, progress, fileName, error } = useMediaPhase(id, initial);
   const reupload = useUploads((s) => s.reupload);
+  const cancel = useUploads((s) => s.cancel);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const pct = Math.round(progress * 100);
   const accept = type === "podcast" ? "audio/*" : "video/*";
@@ -72,7 +73,9 @@ export function MediaStrip({ id, initial, type }: { id: string; initial: MediaSt
     phase === "uploading"
       ? `อัปโหลด ${pct}%`
       : phase === "processing"
-        ? "กำลังประมวลผล"
+        ? type === "podcast"
+          ? "กำลังตรวจไฟล์เสียง"
+          : "กำลังประมวลผล"
         : phase === "ready"
           ? "พร้อม"
           : phase === "failed"
@@ -80,7 +83,7 @@ export function MediaStrip({ id, initial, type }: { id: string; initial: MediaSt
             : "การอัปโหลดยังไม่เสร็จ";
   const sub =
     phase === "uploading"
-      ? "กรอกรายละเอียดด้านล่างไปพร้อมกันได้เลย ระบบบันทึกให้อัตโนมัติ"
+      ? "กรอกรายละเอียดด้านล่างไปพร้อมกันได้เลย ระบบบันทึกให้อัตโนมัติ" + (type === "podcast" ? " · อย่าปิดแท็บจนอัปโหลดเสร็จ" : "")
       : phase === "processing"
         ? "ปิดหน้านี้ได้ ระบบจะเผยแพร่ให้อัตโนมัติเมื่อพร้อม (ถ้าเลือกเผยแพร่ทันที)"
         : phase === "ready"
@@ -119,6 +122,11 @@ export function MediaStrip({ id, initial, type }: { id: string; initial: MediaSt
           </p>
           <p className="t-caption text-text-2">{sub}</p>
         </div>
+        {phase === "uploading" && (
+          <Button size="sm" variant="outline" onClick={() => cancel(id)}>
+            <X /> ยกเลิก
+          </Button>
+        )}
         {(phase === "failed" || phase === "interrupted") && (
           <>
             <input

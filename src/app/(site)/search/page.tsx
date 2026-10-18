@@ -2,29 +2,31 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getViewer } from "@/lib/server/auth";
 import { popular, progressMap, search } from "@/lib/server/queries";
-import { PlaylistCard, RowCard, ShortCard } from "@/components/cards/cards";
+import { PlaylistCard, RowCard } from "@/components/cards/cards";
+import { ArticleCard } from "@/components/community/article-card";
+import { searchArticles } from "@/lib/server/community";
 import { ContentGrid } from "@/components/content/feed";
 import { EmptyState, SectionHeader } from "@/components/ui/misc";
 import { formatNumber } from "@/lib/format";
 import type { ContentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type SearchType = ContentType | "playlist";
+type SearchType = Exclude<ContentType, "short"> | "playlist" | "article";
 type SP = Promise<{ q?: string | string[]; type?: string | string[] }>;
 
 const CHIPS: { value: SearchType | undefined; label: string }[] = [
   { value: undefined, label: "ทั้งหมด" },
   { value: "video", label: "วิดีโอ" },
-  { value: "short", label: "Shorts" },
   { value: "podcast", label: "พอดแคสต์" },
   { value: "playlist", label: "Playlist" },
+  { value: "article", label: "บทความ" },
 ];
 
 function parse(sp: Awaited<SP>) {
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
   const q = one(sp.q).trim().slice(0, 100);
   const t = one(sp.type);
-  const type = (["video", "short", "podcast", "playlist"] as const).find((x) => x === t);
+  const type = (["video", "podcast", "playlist", "article"] as const).find((x) => x === t);
   return { q, type };
 }
 
@@ -40,16 +42,17 @@ function href(q: string, type?: SearchType) {
   return `/search?${p.toString()}`;
 }
 
-const SHORT_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
 const PLAYLIST_GRID = "grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
 export default async function SearchPage({ searchParams }: { searchParams: SP }) {
   const { q, type } = parse(await searchParams);
   const viewer = await getViewer();
-  const { content, playlists } = q ? await search(q, type) : { content: [], playlists: [] };
-  const rows = content.filter((c) => c.type !== "short");
-  const shorts = content.filter((c) => c.type === "short");
-  const total = content.length + playlists.length;
+  const found = q && type !== "article" ? await search(q, type) : { content: [], playlists: [] };
+  const content = found.content;
+  const playlists = found.playlists;
+  const articles = q && (!type || type === "article") ? await searchArticles(q, 12).catch(() => []) : [];
+  const rows = content;
+  const total = content.length + playlists.length + articles.length;
   const progress = await progressMap(viewer?.id, content.map((c) => c.id));
 
   return (
@@ -100,12 +103,12 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
             </section>
           )}
 
-          {shorts.length > 0 && (
-            <section>
-              <SectionHeader title="Shorts" />
-              <div className={SHORT_GRID}>
-                {shorts.map((c) => (
-                  <ShortCard key={c.id} c={c} />
+          {articles.length > 0 && (
+            <section aria-label="บทความ" className="max-w-[1100px]">
+              <SectionHeader title="บทความ" />
+              <div className="space-y-6">
+                {articles.map((a) => (
+                  <ArticleCard key={a.id} a={a} locked={!viewer?.is_member} />
                 ))}
               </div>
             </section>

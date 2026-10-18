@@ -100,7 +100,7 @@ export function formatBytes(n: number) {
 export const TYPE_LABEL = { video: "วิดีโอ", short: "Shorts", podcast: "พอดแคสต์" } as const;
 
 export function contentHref(c: { id: string; type: string }) {
-  if (c.type === "short") return `/shorts/${c.id}`;
+  if (c.type === "short") return "/community"; // Shorts were replaced by ชุมชน
   if (c.type === "podcast") return `/podcasts/${c.id}`;
   return `/watch/${c.id}`;
 }

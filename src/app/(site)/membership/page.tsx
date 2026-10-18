@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronDown, FileDown, FlaskConical, Headphones, MessageCircle, SquarePlay } from "lucide-react";
-import { getViewer, isDemoMode } from "@/lib/server/auth";
-import { listContent, siteSettings } from "@/lib/server/queries";
-import { Button } from "@/components/ui/button";
+import { Check, ChevronDown, FileDown, Headphones, MessageCircle, SquarePlay } from "lucide-react";
+import { getViewer } from "@/lib/server/auth";
+import { listContent, paymentsFor, siteSettings } from "@/lib/server/queries";
 import { MemberBadge } from "@/components/ui/misc";
+import { PlanCard } from "@/components/membership/plan-card";
 import { contentHref, daysUntil, formatDuration, formatNumber, thaiDate } from "@/lib/format";
+import { PLANS, PLAN_LIST, planOfPayment, renewalLabel, type PlanCode } from "@/lib/plans";
 import { PayButton } from "./_components/pay-button";
 
 export const metadata: Metadata = {
@@ -23,19 +24,19 @@ function safePath(v: string | string[] | undefined) {
 const FAQ = [
   {
     q: "ยกเลิกยังไง?",
-    a: "ไม่ต้องยกเลิกเลย ระบบไม่มีการตัดเงินอัตโนมัติ สมาชิกจะหมดอายุเองเมื่อครบ 30 วัน ถ้าอยากดูต่อค่อยต่ออายุเอง",
+    a: "ถ้าจ่ายด้วยบัตร ระบบจะต่ออายุให้อัตโนมัติทุกรอบ และยกเลิกได้ทุกเมื่อก่อนรอบถัดไป สมาชิกยังใช้งานได้จนครบรอบที่จ่ายไปแล้ว ถ้าจ่ายด้วยพร้อมเพย์ ไม่มีการตัดเงินอัตโนมัติ สมาชิกจะหมดอายุเองเมื่อครบรอบ",
   },
   {
-    q: "จ่ายผ่านช่องทางไหนได้บ้าง?",
-    a: "บัตรเครดิต/เดบิต, PromptPay QR, Apple Pay, Google Pay หรือโอนเงินแล้วแนบสลิป",
+    q: "บัตรกับพร้อมเพย์ต่างกันยังไง?",
+    a: `บัตรเครดิต/เดบิตคือช่องทางหลัก ต่ออายุอัตโนมัติ ไม่ต้องกลับมาจ่ายเอง ส่วนพร้อมเพย์สแกน QR จ่ายครั้งเดียว ใช้ได้ตามแพ็กเกจที่เลือก (${PLANS.monthly.days} หรือ ${PLANS.yearly.days} วัน) ครบแล้วต้องชำระใหม่เอง`,
   },
   {
     q: "ต่ออายุยังไง?",
-    a: "กด “ต่ออายุล่วงหน้า” แล้วชำระเงินได้ตลอดเวลา วันใหม่จะต่อจากวันหมดอายุเดิม วันที่เหลืออยู่ไม่หายไปไหน",
+    a: "เลือกแพ็กเกจแล้วชำระเงินได้ตลอดเวลา แม้ยังเป็นสมาชิกอยู่ วันใหม่จะต่อจากวันหมดอายุเดิม วันที่เหลืออยู่ไม่หายไปไหน",
   },
   {
     q: "จ่ายแล้วดูได้เลยไหม?",
-    a: "ได้ทันทีหลังระบบยืนยันการชำระเงิน ปกติใช้เวลาไม่ถึง 1 นาที ถ้านานกว่านั้นทักเราทาง LINE OA พร้อมสลิปได้เลย",
+    a: "ได้ทันทีหลังระบบยืนยันการชำระเงิน ปกติใช้เวลาไม่ถึง 1 นาที ถ้านานกว่านั้นทักเราทาง LINE OA พร้อมหลักฐานการชำระเงินได้เลย",
   },
 ];
 
@@ -46,50 +47,21 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   const from = safePath(rawFrom);
   const viewer = await getViewer();
   const s = await siteSettings();
-  const demo = isDemoMode();
-  const paymentUrl = process.env.PAYMENT_URL?.trim();
 
   let samples = await listContent({ visibility: "members", types: ["video", "podcast"], limit: 8 });
   if (!samples.length) samples = await listContent({ visibility: "members", limit: 8 });
 
-  // ── Where "ชำระเงิน" goes (built server-side) ──
-  const self = `/membership${from ? `?from=${encodeURIComponent(from)}` : ""}`;
-  let payHref: string | null;
-  let external = false;
-  if (!viewer) {
-    payHref = `/signup?next=${encodeURIComponent(self)}`;
-  } else if (paymentUrl) {
-    try {
-      const u = new URL(paymentUrl);
-      u.searchParams.set("uid", viewer.id);
-      u.searchParams.set("email", viewer.email);
-      payHref = u.toString();
-      external = true;
-    } catch {
-      payHref = null;
-    }
-  } else if (demo) {
-    payHref = `/membership/success?demo=1${from ? `&from=${encodeURIComponent(from)}` : ""}`;
-  } else {
-    payHref = null;
-  }
-
   const isMember = !!viewer?.is_member;
   const hasExpiry = isMember && !!viewer?.expires_at;
   const left = hasExpiry ? Math.max(0, daysUntil(viewer!.expires_at)) : 0;
-  const ctaLabel = isMember ? "ต่ออายุล่วงหน้า" : "ชำระเงิน";
-  const showDemoNote = !!viewer && !paymentUrl && demo;
+  const lastPayment = hasExpiry ? (await paymentsFor(viewer!.id).catch(() => []))[0] : undefined;
+  const lastPlan = lastPayment ? planOfPayment(lastPayment) : null;
 
-  const cta = (className?: string) =>
-    payHref ? (
-      <PayButton href={payHref} from={from} external={external} className={className}>
-        {viewer ? ctaLabel : "สมัครและชำระเงิน"}
-      </PayButton>
-    ) : (
-      <Button variant="member" size="lg" disabled className={className}>
-        ระบบชำระเงินยังไม่เปิด
-      </Button>
-    );
+  const self = `/membership${from ? `?from=${encodeURIComponent(from)}` : ""}`;
+  const checkoutHref = (plan: PlanCode) => `/membership/checkout?plan=${plan}${from ? `&from=${encodeURIComponent(from)}` : ""}`;
+  // Guests sign up first and come straight back to the checkout for the plan they picked.
+  const ctaHref = (plan: PlanCode) => (viewer ? checkoutHref(plan) : `/signup?next=${encodeURIComponent(checkoutHref(plan))}`);
+  const ctaLabel = (plan: PlanCode) => (viewer ? `${isMember ? "ต่ออายุ" : "สมัคร"}${PLANS[plan].label}` : "สมัครและชำระเงิน");
 
   return (
     <div className="tg-page mx-auto max-w-[1800px] px-4 sm:px-6 lg:px-8">
@@ -102,59 +74,72 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           เรียนครบในที่เดียว
         </h1>
         <p className="mx-auto mt-5 max-w-[560px] text-[17px] leading-[27px] text-text-2">
-          วิดีโอเต็ม Shorts พอดแคสต์ และไฟล์ประกอบจาก JR ดูได้ไม่จำกัดตลอด 30 วัน ไม่มีตัดเงินอัตโนมัติ
+          วิดีโอเต็ม พอดแคสต์ บทความ และไฟล์ประกอบจาก JR ดูได้ไม่จำกัด เลือกรายเดือน {formatNumber(PLANS.monthly.price)} บาท หรือรายปี{" "}
+          {formatNumber(PLANS.yearly.price)} บาท
         </p>
 
-        {isMember ? (
+        {isMember && (
           <div className="mx-auto mt-8 max-w-[420px] rounded-[16px] border border-border bg-surface p-6">
             <MemberBadge label="คุณเป็นสมาชิกอยู่แล้ว" />
             {hasExpiry ? (
               <>
                 <p className="mt-3 text-[20px] font-semibold">สมาชิกถึงวันที่ {thaiDate(viewer!.expires_at)}</p>
                 <p className="t-meta tnum mt-1">เหลืออีก {formatNumber(left)} วัน · ต่ออายุล่วงหน้าได้ วันจะต่อจากวันหมดอายุเดิม</p>
-                <div className="mt-5">{cta("w-full")}</div>
+                {lastPayment && (
+                  <p className="t-meta mt-3 border-t border-border pt-3">
+                    {lastPlan ? `แพ็กเกจ${lastPlan.label} · ` : ""}
+                    {renewalLabel(lastPayment.method)}
+                    {lastPayment.method === "card" && " ไม่ต้องชำระซ้ำ"}
+                  </p>
+                )}
               </>
             ) : (
               <p className="t-meta mt-3">บัญชีผู้ดูแลช่องเข้าถึงคอนเทนต์ได้ทั้งหมด</p>
             )}
           </div>
-        ) : (
-          <div className="mt-8 flex flex-col items-center gap-4">
-            <p className="flex items-baseline gap-1.5">
-              <span className="tnum text-[48px] font-semibold leading-none tracking-[-0.03em]">{formatNumber(s.price_thb)}</span>
-              <span className="text-[17px] text-text-2">บาท/เดือน</span>
-            </p>
-            {cta()}
-            {viewer?.expires_at && <p className="t-meta">สมาชิกของคุณหมดอายุเมื่อ {thaiDate(viewer.expires_at)}</p>}
-            {!viewer && (
-              <p className="t-meta">
-                มีบัญชีแล้ว?{" "}
-                <Link href={`/login?next=${encodeURIComponent(self)}`} className="font-medium text-text underline-offset-4 hover:underline">
-                  เข้าสู่ระบบ
-                </Link>
-              </p>
-            )}
-          </div>
         )}
 
-        {showDemoNote && (
-          <aside className="mx-auto mt-6 max-w-[520px] rounded-[16px] border border-dashed border-border-strong px-5 py-4 text-left text-[13px]">
-            <p className="flex items-center gap-1.5 font-semibold text-text-2">
-              <FlaskConical className="size-4" strokeWidth={1.75} aria-hidden /> โหมดเดโม
-            </p>
-            <p className="mt-1.5 text-text-2">
-              ยังไม่ได้ตั้งค่า <code className="font-mono text-text">PAYMENT_URL</code> ปุ่มชำระเงินจะพาไปหน้ายืนยันการชำระเงินโดยตรง จากนั้นจำลองการจ่ายเงินด้วยคำสั่งนี้ในเทอร์มินัล:
-            </p>
-            <code className="mt-2 block select-all overflow-x-auto whitespace-nowrap rounded-[10px] bg-hover px-3 py-2 font-mono text-[12px] text-text">
-              npm run webhook:test -- {viewer!.email}
-            </code>
-          </aside>
+        {!viewer && (
+          <p className="t-meta mt-6">
+            มีบัญชีแล้ว?{" "}
+            <Link href={`/login?next=${encodeURIComponent(self)}`} className="font-medium text-text underline-offset-4 hover:underline">
+              เข้าสู่ระบบ
+            </Link>
+          </p>
         )}
       </section>
 
+      {/* ── Plans (the channel owner's own account has full access, so nothing to sell there) ── */}
+      {(!isMember || hasExpiry) && (
+        <section className="mx-auto max-w-[900px]" aria-labelledby="plans-h">
+          <h2 id="plans-h" className="t-h1 mb-8 text-center">
+            {isMember ? "ต่ออายุล่วงหน้า" : "เลือกแพ็กเกจ"}
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2 md:gap-5">
+            {PLAN_LIST.map((plan) => (
+              <PlanCard
+                key={plan.code}
+                plan={plan}
+                highlighted={plan.code === "yearly"}
+                // Best value first when stacked on a phone, on the right on wider screens.
+                className={plan.code === "yearly" ? "order-first md:order-last" : undefined}
+                cta={
+                  <PayButton href={ctaHref(plan.code)} from={from} variant={plan.code === "yearly" ? "member" : "outline"} className="w-full">
+                    {ctaLabel(plan.code)}
+                  </PayButton>
+                }
+              />
+            ))}
+          </div>
+          <p className="t-meta mt-5 text-center">
+            ชำระด้วยบัตรเครดิต/เดบิต (ต่ออายุอัตโนมัติ ยกเลิกได้ทุกเมื่อ) หรือพร้อมเพย์ (จ่ายครั้งเดียว ไม่ต่ออัตโนมัติ)
+          </p>
+        </section>
+      )}
+
       {/* ── Sample content strip ── */}
       {samples.length > 0 && (
-        <section className="mx-auto max-w-[1200px]" aria-labelledby="samples-h">
+        <section className="mx-auto mt-16 max-w-[1200px]" aria-labelledby="samples-h">
           <h2 id="samples-h" className="t-h2 mb-4 text-center">
             ตัวอย่างคอนเทนต์สำหรับสมาชิก
           </h2>
@@ -204,26 +189,6 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           })}
         </ul>
       </section>
-
-      {/* ── Price card ── */}
-      {!isMember && (
-        <section className="mx-auto mt-16 max-w-[460px] rounded-[20px] border border-border bg-surface p-7 text-center sm:p-8">
-          <p className="text-[14px] font-semibold text-member">สมาชิกรายเดือน</p>
-          <p className="mt-3 flex items-baseline justify-center gap-1.5">
-            <span className="tnum text-[44px] font-semibold leading-none tracking-[-0.03em]">{formatNumber(s.price_thb)}</span>
-            <span className="text-[15px] text-text-2">บาท / 30 วัน</span>
-          </p>
-          <ul className="mx-auto mt-5 max-w-[280px] space-y-2 text-left text-[14px]">
-            {["ไม่มีตัดเงินอัตโนมัติ", "จ่ายล่วงหน้าได้ วันไม่หาย", "บัตร · PromptPay · Apple Pay · Google Pay · โอน"].map((x) => (
-              <li key={x} className="flex gap-2.5">
-                <Check className="mt-0.5 size-4 shrink-0 text-member" strokeWidth={2.25} aria-hidden />
-                {x}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-6">{cta("w-full")}</div>
-        </section>
-      )}
 
       {/* ── FAQ ── */}
       <section className="mx-auto mt-16 max-w-[760px] pb-8" aria-labelledby="faq-h">

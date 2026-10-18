@@ -13,7 +13,9 @@ import {
 import { Hero } from "@/components/content/hero";
 import { HomeFeed } from "@/components/content/home-feed";
 import { ContentGrid, InfiniteGrid, Shelf } from "@/components/content/feed";
-import { PlaylistCard, PodcastCard, ShortCard, VideoCard } from "@/components/cards/cards";
+import { PlaylistCard, PodcastCard, VideoCard } from "@/components/cards/cards";
+import { ArticleCard } from "@/components/community/article-card";
+import { latestArticles } from "@/lib/server/community";
 import { SectionHeader } from "@/components/ui/misc";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
@@ -22,11 +24,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const sections = (await homeSections()).filter((s) => s.enabled);
   const custom = sections.filter((s) => s.type === "custom");
   // Everything below is independent — fetch in parallel.
-  const [progress, heroItems, latest, shorts, podcasts, playlists, cont, customLists, cats] = await Promise.all([
+  const [progress, heroItems, latest, articles, podcasts, playlists, cont, customLists, cats] = await Promise.all([
     progressMap(viewer?.id),
     heroSlides(),
     listContent({ type: "video", limit: 8 }),
-    listContent({ type: "short", limit: 12 }),
+    latestArticles(6).catch(() => []), // community tables may not be migrated yet
     listContent({ type: "podcast", limit: 12 }),
     playlistsWithMeta(viewer?.id),
     continueWatching(viewer?.id),
@@ -59,11 +61,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <ContentGrid items={latest} progress={progress} priorityFirst={!heroItems.length} />
             </section>
           ) : null;
-        case "shorts":
-          return shorts.length ? (
-            <Shelf key={s.id} title={s.title || "Shorts"} action={more_link("/shorts")} itemClass="w-[42vw] sm:w-[200px]">
-              {shorts.map((c) => (
-                <ShortCard key={c.id} c={c} />
+        case "shorts": // legacy section type: the Shorts shelf now shows the latest articles
+          return articles.length ? (
+            <Shelf
+              key={s.id}
+              title={!s.title || /short/i.test(s.title) ? "บทความจาก JR" : s.title}
+              action={more_link("/community/articles")}
+              itemClass="w-[78vw] sm:w-[300px]"
+            >
+              {articles.map((a) => (
+                <ArticleCard key={a.id} a={a} locked={!viewer?.is_member} variant="tile" />
               ))}
             </Shelf>
           ) : null;
@@ -87,9 +94,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           const items = customItems.get(s.id) ?? [];
           return items.length ? (
             <Shelf key={s.id} title={s.title} itemClass="w-[78vw] sm:w-[300px]">
-              {items.map((c) =>
-                c.type === "short" ? <ShortCard key={c.id} c={c} /> : c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} /> : <VideoCard key={c.id} c={c} progress={progress} />,
-              )}
+              {items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} /> : <VideoCard key={c.id} c={c} progress={progress} />))}
             </Shelf>
           ) : null;
         }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Fire a signed test payment at the local webhook.
-// Usage: npm run webhook:test -- <email> [reference] [months]
+// Usage: npm run webhook:test -- <email> [monthly|yearly] [card|promptpay] [reference] [--amount=N]
+//   npm run webhook:test -- me@example.com yearly promptpay
 import { createHmac, randomUUID } from "node:crypto";
 import fs from "node:fs";
 
@@ -17,7 +18,27 @@ function env(name) {
   }
 }
 
-const [email = "free@topjgrind.test", reference = `TEST-${randomUUID().slice(0, 8)}`, months = "1"] = process.argv.slice(2);
+// Keep in sync with src/lib/plans.ts
+const PLANS = { monthly: 990, yearly: 4990 };
+const METHODS = ["card", "promptpay"];
+
+const flags = Object.fromEntries(
+  process.argv
+    .slice(2)
+    .filter((a) => a.startsWith("--"))
+    .map((a) => a.slice(2).split("=")),
+);
+const [email = "free@topjgrind.test", plan = "monthly", method = "card", reference = `TEST-${randomUUID().slice(0, 8)}`] = process.argv
+  .slice(2)
+  .filter((a) => !a.startsWith("--"));
+if (!(plan in PLANS)) {
+  console.error(`plan must be one of: ${Object.keys(PLANS).join(", ")}`);
+  process.exit(1);
+}
+if (!METHODS.includes(method)) {
+  console.error(`method must be one of: ${METHODS.join(", ")}`);
+  process.exit(1);
+}
 const secret = env("PAYMENT_WEBHOOK_SECRET");
 const base = env("WEBHOOK_TEST_URL") ?? "http://localhost:3000";
 if (!secret) {
@@ -26,10 +47,10 @@ if (!secret) {
 }
 const body = JSON.stringify({
   email,
-  amount: 300 * Number(months),
+  amount: flags.amount !== undefined ? Number(flags.amount) : PLANS[plan], // --amount=1 to test the mismatch check
   currency: "THB",
-  months: Number(months),
-  method: "promptpay",
+  plan,
+  method,
   reference,
   paid_at: new Date().toISOString(),
 });

@@ -12,7 +12,7 @@ const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: { default: "TOPJ_GRIND", template: "%s · TOPJ_GRIND" },
-  description: "คอร์สออนไลน์ของ JR — วิดีโอ, Shorts และพอดแคสต์ เรื่องการสร้างรายได้จาก Digital Product",
+  description: "คอร์สออนไลน์ของ JR — วิดีโอ, พอดแคสต์ และบทความ เรื่องการสร้างรายได้จาก Digital Product",
   applicationName: "TOPJ_GRIND",
   appleWebApp: { capable: true, title: "TOPJ_GRIND", statusBarStyle: "black-translucent" },
   openGraph: { siteName: "TOPJ_GRIND", locale: "th_TH", type: "website" },

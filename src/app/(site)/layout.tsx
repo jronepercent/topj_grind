@@ -13,7 +13,6 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       settings={{
         channel_name: s.channel_name,
         avatar_url: s.avatar_url,
-        price_thb: s.price_thb,
         paywall_title: s.paywall_title,
         paywall_benefits: s.paywall_benefits,
       }}

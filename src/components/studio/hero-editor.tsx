@@ -32,7 +32,8 @@ const STATE: Record<HeroSlideState, { label: string; tone: "success" | "danger" 
 const LINK_PRESETS = [
   { href: "/membership", label: "หน้าสมัครสมาชิก" },
   { href: "/playlists", label: "หน้า Playlist" },
-  { href: "/shorts", label: "หน้า Shorts" },
+  { href: "/community", label: "หน้าชุมชน" },
+  { href: "/community/articles", label: "หน้าบทความ" },
   { href: "/podcasts", label: "หน้าพอดแคสต์" },
 ];
 

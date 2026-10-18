@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Check, Headphones, Lock, Pause, Play, Zap } from "lucide-react";
+import { Check, Headphones, Lock, Pause, Play } from "lucide-react";
 import { useViewer } from "@/components/providers";
 import { MemberBadge } from "@/components/ui/misc";
 import { ContentMenu } from "./content-menu";
@@ -156,15 +156,10 @@ export function RowCard({
         <Thumb
           src={c.thumbnail_url}
           alt=""
-          ratio={size === "lg" || c.type !== "short" ? "16/9" : ratio}
+          ratio={ratio}
           sizes={size === "lg" ? "360px" : "168px"}
         >
           <VisibilityBadge c={c} />
-          {c.type === "short" && (
-            <span className="absolute left-2 bottom-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
-              <Zap className="size-3" /> Shorts
-            </span>
-          )}
           <span className="tnum absolute bottom-1.5 right-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-white">
             {formatDuration(c.duration_sec)}
           </span>
@@ -182,25 +177,6 @@ export function RowCard({
         {extra}
       </div>
       <ContentMenu content={c} className="self-start" />
-    </article>
-  );
-}
-
-export function ShortCard({ c, className }: { c: Content; className?: string }) {
-  const locked = useLocked(c);
-  return (
-    <article className={cn("group relative", className)}>
-      <Link href={`/shorts/${c.id}`} className="block" aria-label={c.title}>
-        <Thumb src={c.thumbnail_url} alt="" ratio="9/16" sizes="(max-width:640px) 45vw, 220px">
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" aria-hidden />
-          {c.visibility === "members" && <MemberBadge locked={locked} className="absolute left-2 top-2 bg-black/60 backdrop-blur" />}
-          <Zap className="absolute right-2 top-2 size-4 fill-white text-white drop-shadow" aria-label="Shorts" />
-          <div className="absolute inset-x-0 bottom-0 p-3">
-            <h3 className="line-clamp-2 text-[14px] font-semibold leading-5 text-white">{c.title}</h3>
-            <p className="tnum mt-0.5 text-[12px] text-white/75">การดู {formatCount(c.view_count)} ครั้ง</p>
-          </div>
-        </Thumb>
-      </Link>
     </article>
   );
 }
@@ -314,8 +290,8 @@ function PlaylistLockBadge() {
   return <MemberBadge locked={!viewer?.is_member} className="absolute left-2 top-2 bg-black/60 backdrop-blur" />;
 }
 
-export function CardSkeleton({ kind = "video" }: { kind?: "video" | "short" | "podcast" }) {
-  const ratio = kind === "short" ? "9/16" : kind === "podcast" ? "1/1" : "16/9";
+export function CardSkeleton({ kind = "video" }: { kind?: "video" | "podcast" }) {
+  const ratio = kind === "podcast" ? "1/1" : "16/9";
   return (
     <div>
       <div className="skeleton rounded-[12px]" style={{ aspectRatio: ratio }} />

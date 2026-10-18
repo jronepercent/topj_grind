@@ -19,7 +19,7 @@ npm run dev
 | `npm run db:test-rls` | ทดสอบสิทธิ์ 24 กรณีกับฐานข้อมูลจริง แล้ว rollback ไม่ทิ้งข้อมูล |
 | `npm run db:seed` | ใส่ข้อมูลตัวอย่าง · `-- --force` ใส่ใหม่ · `-- --remove` ลบออกทั้งหมด |
 | `npm run db:make-admin -- อีเมล` | ให้สิทธิ์ Studio กับบัญชีที่สมัครแล้ว (ใช้กับบัญชีจริงของ JR) |
-| `npm run webhook:test -- อีเมล` | ยิง webhook ชำระเงินทดสอบ |
+| `npm run webhook:test -- <email> [monthly\|yearly] [card\|promptpay] [reference] [--amount=N]` | ยิง webhook ชำระเงินทดสอบ (ราคาแพ็กเกจอยู่ใน `src/lib/plans.ts`) |
 
 **โหมดเดโม** (`NEXT_PUBLIC_DEMO_MODE=true`): ปุ่ม DEMO มุมซ้ายล่างสลับเข้าบัญชีทดลอง (`admin@ / member@ / soon@ / free@topjgrind.test`) รหัสผ่านอยู่ใน `DEMO_PASSWORD` ใน `.env.local`
 ⚠️ **ก่อนเปิดเว็บจริง:** `npm run db:seed -- --remove` และตั้ง `NEXT_PUBLIC_DEMO_MODE=false` — บัญชีทดลองเป็นผู้ใช้จริงในฐานข้อมูลจริง (รวม admin ทดลอง)
@@ -28,7 +28,7 @@ npm run dev
 
 | ส่วน | ที่อยู่ |
 |---|---|
-| หน้าคนดู | `src/app/(site)/` — Home, Watch, Shorts, Podcasts, Playlists, Search, Library, About, Membership, Account |
+| หน้าคนดู | `src/app/(site)/` — Home, Watch, Community (ชุมชน/บทความ), Podcasts, Playlists, Search, Library, About, Membership, Account |
 | Auth | `src/app/(auth)/`, `src/app/auth/magic` |
 | Studio (Admin) | `src/app/studio/`, `src/components/studio/` |
 | API | `/api/play/[id]` (ออก URL เล่นหลังเช็กสิทธิ์), `/api/webhooks/payment`, `/api/webhooks/bunny`, `/api/cron/*`, `/api/resources/[id]`, `/api/studio/members` |

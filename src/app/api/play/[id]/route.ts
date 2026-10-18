@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * The ONLY place a playable media URL is created. Checks membership first,
- * then returns a Bunny signed URL valid for 2 hours.
+ * then returns a signed URL: Bunny for video (2 hours), Supabase Storage for podcast audio (6 hours).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!canWatch(viewer, c)) {
     return NextResponse.json({ error: "members_only" }, { status: viewer ? 403 : 401, headers });
   }
-  const pb = playbackFor(c);
+  const pb = await playbackFor(c);
   if (!pb) return NextResponse.json({ error: "media_unavailable" }, { status: 409, headers });
   return NextResponse.json(
     { src: pb.src, type: pb.type, expires_at: pb.expires_at, captions: c.captions_vtt ? `/api/play/${id}/captions` : null },

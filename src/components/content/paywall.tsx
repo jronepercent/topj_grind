@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { Check, Lock } from "lucide-react";
 import { useViewer } from "@/components/providers";
 import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/lib/format";
+import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /** Where the subscribe button should go — guests sign in first, then come back. */
@@ -48,13 +50,17 @@ export function Paywall({
           </li>
         ))}
       </ul>
-      <p className="mt-5 flex items-baseline justify-center gap-1">
-        <span className="text-[36px] font-semibold leading-none tracking-[-0.02em] tnum">{settings.price_thb}</span>
-        <span className={cn("text-[15px]", variant === "modal" ? "text-text-2" : "text-[#A1A1A6]")}>บาท / เดือน</span>
+      <p className={cn("tnum mt-5 text-[15px] leading-[24px]", variant === "modal" ? "text-text-2" : "text-[#A1A1A6]")}>
+        เริ่มต้น{" "}
+        <span className={cn("text-[22px] font-semibold tracking-[-0.01em]", variant === "modal" ? "text-text" : "text-[#F5F5F7]")}>
+          {formatNumber(PLANS.monthly.price)} บาท/{PLANS.monthly.unit}
+        </span>
+        <br />
+        หรือ {formatNumber(PLANS.yearly.price)} บาท/{PLANS.yearly.unit}
       </p>
       <div className="mt-5 flex flex-col gap-2">
         <Button asChild size="lg" className="bg-[#E8C77A] text-[#1d1606] hover:brightness-105" onClick={onClose}>
-          <Link href={href}>สมัครสมาชิก</Link>
+          <Link href={href}>ดูแพ็กเกจและสมัคร</Link>
         </Button>
         <Button
           asChild

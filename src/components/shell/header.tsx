@@ -11,12 +11,13 @@ import {
   Library,
   LogOut,
   Menu,
+  MessagesSquare,
   Mic,
   Monitor,
   Moon,
+  Newspaper,
   Plus,
   Search,
-  Smartphone,
   Sun,
   User,
 } from "lucide-react";
@@ -110,13 +111,18 @@ function CreateMenu() {
           </Link>
         </DropdownItem>
         <DropdownItem asChild>
-          <Link href="/studio/upload?type=short">
-            <Smartphone /> อัปโหลด Short
+          <Link href="/studio/upload?type=podcast">
+            <Mic /> อัปโหลดพอดแคสต์
           </Link>
         </DropdownItem>
         <DropdownItem asChild>
-          <Link href="/studio/upload?type=podcast">
-            <Mic /> อัปโหลดพอดแคสต์
+          <Link href="/studio/community">
+            <MessagesSquare /> เขียนโพสต์ในชุมชน
+          </Link>
+        </DropdownItem>
+        <DropdownItem asChild>
+          <Link href="/studio/articles/new">
+            <Newspaper /> เขียนบทความ
           </Link>
         </DropdownItem>
         <DropdownItem asChild>

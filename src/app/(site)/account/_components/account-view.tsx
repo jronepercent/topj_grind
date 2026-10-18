@@ -10,6 +10,7 @@ import { Avatar, Field, inputClass, MemberBadge } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { formatNumber, thaiDate } from "@/lib/format";
+import { PAYMENT_METHOD_LABEL, planOfPayment, renewalLabel } from "@/lib/plans";
 import type { PaymentMethod, ThemePref, Viewer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -19,18 +20,16 @@ export interface PaymentRow {
   amount: number;
   currency: string;
   months: number;
+  plan: string | null;
   method: PaymentMethod;
   reference: string;
 }
 
-const METHOD_LABEL: Record<PaymentMethod, string> = {
-  card: "บัตรเครดิต/เดบิต",
-  promptpay: "PromptPay QR",
-  slip: "โอนเงิน (แนบสลิป)",
-  apple_pay: "Apple Pay",
-  google_pay: "Google Pay",
-  manual: "เพิ่มโดยผู้ดูแล",
-};
+/** "รายปี · บัตรเครดิต/เดบิต" — plan (when known) and how it was paid. */
+function paymentSummary(p: PaymentRow) {
+  const plan = planOfPayment(p);
+  return [plan?.label, PAYMENT_METHOD_LABEL[p.method] ?? p.method].filter(Boolean).join(" · ");
+}
 
 const MAX_AVATAR = 1024 * 1024; // 1MB
 
@@ -64,7 +63,7 @@ export function AccountView({
         <input type="email" value={viewer.email} readOnly aria-label="อีเมล" className={cn(inputClass, "cursor-default text-text-2")} />
       </Card>
       <PasswordCard />
-      <MembershipCard viewer={viewer} daysLeft={daysLeft} firstPaidAt={firstPaidAt} />
+      <MembershipCard viewer={viewer} daysLeft={daysLeft} firstPaidAt={firstPaidAt} lastPayment={payments[0] ?? null} />
       <PaymentsCard payments={payments} />
       <PreferencesCard initialTheme={theme} initialAutoplay={viewer.autoplay} />
       <LogoutCard />
@@ -287,7 +286,17 @@ function PasswordCard() {
 
 // ───────── Membership ─────────
 
-function MembershipCard({ viewer, daysLeft, firstPaidAt }: { viewer: Viewer; daysLeft: number | null; firstPaidAt: string | null }) {
+function MembershipCard({
+  viewer,
+  daysLeft,
+  firstPaidAt,
+  lastPayment,
+}: {
+  viewer: Viewer;
+  daysLeft: number | null;
+  firstPaidAt: string | null;
+  lastPayment: PaymentRow | null;
+}) {
   const renew = "/membership?from=%2Faccount";
   let body: React.ReactNode;
   if (viewer.is_admin) {
@@ -301,6 +310,13 @@ function MembershipCard({ viewer, daysLeft, firstPaidAt }: { viewer: Viewer; day
           <p className="mt-3 text-[20px] font-semibold">สมาชิกถึงวันที่ {thaiDate(viewer.expires_at)}</p>
           <p className={cn("t-meta tnum mt-1", left <= 3 && "font-medium text-member")}>เหลืออีก {formatNumber(left)} วัน</p>
           {firstPaidAt && <p className="t-meta mt-1">เป็นสมาชิกตั้งแต่ {thaiDate(firstPaidAt)}</p>}
+          {lastPayment && (
+            <p className="t-meta mt-3">
+              <span className="font-medium text-text">{paymentSummary(lastPayment)}</span>
+              {" · "}
+              <span className={cn(lastPayment.method === "card" ? "text-success" : "text-member")}>{renewalLabel(lastPayment.method)}</span>
+            </p>
+          )}
         </div>
         <Button asChild variant="outline" className="shrink-0">
           <Link href={renew}>ต่ออายุล่วงหน้า</Link>
@@ -344,7 +360,7 @@ function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
                   <span className="tnum text-[15px] font-semibold">{money(p)}</span>
                 </div>
                 <div className="t-meta mt-0.5 flex items-baseline justify-between gap-3">
-                  <span>{METHOD_LABEL[p.method] ?? p.method}</span>
+                  <span>{paymentSummary(p)}</span>
                   <span className="truncate font-mono text-[12px]">{p.reference}</span>
                 </div>
               </li>
@@ -367,9 +383,8 @@ function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
                     <td className="whitespace-nowrap px-2 py-3">{thaiDate(p.paid_at)}</td>
                     <td className="tnum whitespace-nowrap px-2 py-3 text-right font-medium">
                       {money(p)}
-                      {p.months > 1 && <span className="t-caption ml-1 text-text-2">({p.months} เดือน)</span>}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-3 text-text-2">{METHOD_LABEL[p.method] ?? p.method}</td>
+                    <td className="whitespace-nowrap px-2 py-3 text-text-2">{paymentSummary(p)}</td>
                     <td className="max-w-[200px] truncate px-2 py-3 font-mono text-[12px] text-text-2" title={p.reference}>
                       {p.reference}
                     </td>

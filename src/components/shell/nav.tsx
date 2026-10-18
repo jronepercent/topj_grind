@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock, History, House, Info, Library, ListVideo, Podcast, User, Zap } from "lucide-react";
+import { Clock, History, House, Info, Library, ListVideo, MessagesSquare, Podcast, User } from "lucide-react";
 import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { Logo } from "@/components/ui/logo";
 import { useUI } from "@/lib/stores/player";
@@ -12,7 +12,7 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ classN
 
 const PRIMARY: NavItem[] = [
   { href: "/", label: "หน้าแรก", icon: House },
-  { href: "/shorts", label: "Shorts", icon: Zap },
+  { href: "/community", label: "ชุมชน", icon: MessagesSquare },
   { href: "/podcasts", label: "พอดแคสต์", icon: Podcast },
   { href: "/playlists", label: "Playlist", icon: ListVideo },
 ];
@@ -144,21 +144,18 @@ export function sidebarPad(sidebar: "auto" | "full" | "mini", hidden: boolean) {
 
 const TABS: NavItem[] = [
   { href: "/", label: "หน้าแรก", icon: House },
-  { href: "/shorts", label: "Shorts", icon: Zap },
+  { href: "/community", label: "ชุมชน", icon: MessagesSquare },
   { href: "/podcasts", label: "พอดแคสต์", icon: Podcast },
   { href: "/library", label: "คลัง", icon: Library },
   { href: "/account", label: "บัญชี", icon: User },
 ];
 
 /** Mobile bottom tab bar (<640px). */
-export function BottomTabs({ dark }: { dark?: boolean }) {
+export function BottomTabs() {
   const isActive = useActive();
   return (
     <nav
-      className={cn(
-        "glass tg-vv-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border sm:hidden safe-bottom",
-        dark && "border-white/10 bg-black/80 text-white",
-      )}
+      className="glass tg-vv-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border sm:hidden safe-bottom"
       aria-label="แท็บหลัก"
     >
       <div className="grid h-14 grid-cols-5">

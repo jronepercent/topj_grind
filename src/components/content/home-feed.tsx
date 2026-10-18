@@ -25,7 +25,6 @@ export function HomeFeed({
     () => [
       { key: "all", label: "ทั้งหมด", query: {} },
       { key: "video", label: "วิดีโอ", query: { type: "video" } },
-      { key: "short", label: "Shorts", query: { type: "short" } },
       { key: "podcast", label: "พอดแคสต์", query: { type: "podcast" } },
       ...categories.map((c) => ({ key: c.slug, label: c.name, query: { categoryId: c.id } })),
       ...(initialFilter === "free" ? [{ key: "free", label: "ดูฟรี", query: { visibility: "public" as const } }] : []),
@@ -81,7 +80,7 @@ export function HomeFeed({
         ) : items === null ? (
           <div className={GRID}>
             {Array.from({ length: 8 }, (_, i) => (
-              <CardSkeleton key={i} kind={chip.query.type === "short" ? "short" : "video"} />
+              <CardSkeleton key={i} />
             ))}
           </div>
         ) : (

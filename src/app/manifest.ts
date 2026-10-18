@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "TOPJ_GRIND",
     short_name: "TOPJ_GRIND",
-    description: "วิดีโอ, Shorts และพอดแคสต์จาก JR",
+    description: "วิดีโอ, พอดแคสต์ และบทความจาก JR",
     start_url: "/",
     display: "standalone",
     background_color: "#0A0A0B",

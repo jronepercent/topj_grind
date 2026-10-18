@@ -8,22 +8,19 @@ import {
   Captions,
   Check,
   ChevronLeft,
-  Clapperboard,
   FileText,
   Globe,
   ImagePlus,
   Lock,
   Paperclip,
   Plus,
-  Smartphone,
-  Sparkles,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 import { saveContentAction, type ContentInput } from "@/app/studio/actions";
-import { contentHref, formatBytes, thaiDateTime, TYPE_LABEL } from "@/lib/format";
+import { contentHref, formatBytes, thaiDateTime } from "@/lib/format";
 import { isValidUrl } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
 import type { ContentType, Visibility } from "@/lib/types";
@@ -375,58 +372,9 @@ function StepDetails({
   data: EditorData;
   titleLen: number;
 }) {
-  const job = useUploads((s) => s.jobs[data.id]);
-  const dismiss = useUploads((s) => s.dismissSuggestion);
-
   return (
     <div className="space-y-10">
-      {job?.suggestedShort && form.type === "short" && (
-        <div className="flex items-start gap-3 rounded-[14px] border border-border bg-elevated px-4 py-3" role="status">
-          <Sparkles className="mt-0.5 size-5 shrink-0 text-text-2" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-semibold">ระบบแนะนำให้เป็น Short</p>
-            <p className="t-meta">วิดีโอเป็นแนวตั้งและยาวไม่ถึง 3 นาที จึงตั้งเป็น Short ให้แล้ว เปลี่ยนกลับเป็นวิดีโอได้</p>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              set("type", "video");
-              dismiss(data.id);
-            }}
-          >
-            ใช้เป็นวิดีโอ
-          </Button>
-          <button type="button" onClick={() => dismiss(data.id)} className="rounded-full p-1.5 text-text-2 hover:bg-hover hover:text-text" aria-label="ปิดคำแนะนำ">
-            <X className="size-4" />
-          </button>
-        </div>
-      )}
-
       <Section title="ข้อมูลหลัก">
-        {form.type !== "podcast" && (
-          <div className="mb-5">
-            <p className="mb-1.5 text-[13px] font-medium">ประเภท</p>
-            <div className="inline-flex rounded-full border border-border p-1" role="radiogroup" aria-label="ประเภท">
-              {(["video", "short"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  role="radio"
-                  aria-checked={form.type === t}
-                  onClick={() => set("type", t)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium transition-colors",
-                    form.type === t ? "bg-text text-bg" : "text-text-2 hover:text-text",
-                  )}
-                >
-                  {t === "video" ? <Clapperboard className="size-4" /> : <Smartphone className="size-4" />}
-                  {TYPE_LABEL[t]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         <Field label="ชื่อ (จำเป็น)" counter={`${titleLen}/100`}>
           <input
             value={form.title}
@@ -536,38 +484,6 @@ function StepDetails({
           </div>
         </div>
       </Section>
-
-      {form.type === "short" && (
-        <Section title="ผูกคลิปเต็ม" description="ปุ่ม “ดูคลิปเต็ม” บน Short จะพาไปที่วิดีโอนี้">
-          <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
-            <Field label="วิดีโอ">
-              <select
-                value={form.linked_content_id ?? ""}
-                onChange={(e) => set("linked_content_id", e.target.value || null)}
-                className={cn(inputClass, "appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-9")}
-                style={selectStyle}
-              >
-                <option value="">ไม่ผูก</option>
-                {options.videos.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.title}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="เริ่มที่ (ไม่บังคับ)" hint="เช่น 12:34">
-              <input
-                value={form.linked_start}
-                onChange={(e) => set("linked_start", e.target.value)}
-                disabled={!form.linked_content_id}
-                inputMode="numeric"
-                placeholder="0:00"
-                className={cn(inputClass, "tnum", mmssToSec(form.linked_start) === undefined && "border-danger/60")}
-              />
-            </Field>
-          </div>
-        </Section>
-      )}
     </div>
   );
 }
@@ -695,7 +611,7 @@ function CoverPicker({
     setWarn(w && h && Math.abs(w / h - want) > 0.03 ? `ภาพขนาด ${w}×${h} สัดส่วนไม่ตรงกับที่แนะนำ (${COVER_SIZE[form.type]}) ภาพอาจถูกครอป` : null);
   };
 
-  const ratioCls = form.type === "short" ? "aspect-[9/16] w-24" : form.type === "podcast" ? "aspect-square w-32" : "aspect-video w-full";
+  const ratioCls = form.type === "podcast" ? "aspect-square w-32" : "aspect-video w-full";
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">

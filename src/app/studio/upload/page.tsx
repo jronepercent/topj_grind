@@ -6,7 +6,7 @@ export const metadata = { title: "อัปโหลด" };
 
 export default async function UploadPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type } = await searchParams;
-  const t: ContentType = type === "short" || type === "podcast" ? type : "video";
+  const t: ContentType = type === "podcast" ? type : "video";
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="อัปโหลด" description="เลือกไฟล์แล้วกรอกรายละเอียดได้ทันทีระหว่างที่ไฟล์กำลังอัปโหลด" />

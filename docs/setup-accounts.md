@@ -65,8 +65,7 @@
 NEXT_PUBLIC_DEMO_MODE=true
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 PAYMENT_WEBHOOK_SECRET=demo-webhook-secret
-MEMBERSHIP_PRICE_THB=300
-MEMBERSHIP_DAYS=30
+# ราคาแพ็กเกจกำหนดตายตัวใน src/lib/plans.ts (990 บาท/เดือน, 4,990 บาท/ปี) ไม่ต้องตั้งใน env
 
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
