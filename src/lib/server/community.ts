@@ -49,6 +49,8 @@ function toAuthor(p: ProfileEmbed, fallbackId: string, members: Set<string>): Po
 }
 
 const PROFILE = "author:profiles!author_id(id, display_name, avatar_url, role)";
+// post_comments points at profiles through user_id (not author_id), so it needs its own embed hint.
+const COMMENTER = "author:profiles!user_id(id, display_name, avatar_url, role)";
 const POST_COLS = `id, kind, author_id, body, images, is_pinned, is_hidden, like_count, comment_count, published_at, created_at, ${PROFILE}`;
 
 type PostRow = {
@@ -188,7 +190,7 @@ export async function moderatePost(admin: Viewer, postId: string, action: "pin" 
 }
 
 // ───────────────────────── Comments (community posts + articles) ─────────────────────────
-const COMMENT_COLS = `id, post_id, user_id, parent_id, body, edited_at, created_at, ${PROFILE}`;
+const COMMENT_COLS = `id, post_id, user_id, parent_id, body, edited_at, created_at, ${COMMENTER}`;
 type CommentRow = {
   id: string;
   post_id: string;
@@ -577,7 +579,7 @@ export async function studioCommunity(): Promise<{ posts: StudioPostRow[]; comme
   const comments = must(
     await adminDb()
       .from("post_comments")
-      .select(`id, post_id, user_id, body, is_hidden, created_at, ${PROFILE}, post:posts!post_id(kind, title, body)`)
+      .select(`id, post_id, user_id, body, is_hidden, created_at, ${COMMENTER}, post:posts!post_id(kind, title, body)`)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(80),
