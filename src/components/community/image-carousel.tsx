@@ -14,6 +14,13 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
   const [burst, setBurst] = React.useState(0);
   const lastTap = React.useRef(0);
   const many = images.length > 1;
+  // The frame takes the first image's own shape (never cropped). Very tall images stop at 4:5 like
+  // Instagram and get side bars instead; later images keep the same frame and are fitted inside it.
+  const [ratio, setRatio] = React.useState(4 / 5);
+  const onFirstLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+    if (w && h) setRatio(Math.max(4 / 5, w / h));
+  };
 
   const onScroll = () => {
     const el = scroller.current;
@@ -48,7 +55,12 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
         aria-label={`รูปภาพ ${images.length} รูป`}
       >
         {images.map((src, i) => (
-          <div key={src} className="relative aspect-[4/5] w-full shrink-0 snap-center" aria-label={`รูปที่ ${i + 1} จาก ${images.length}`}>
+          <div
+            key={src}
+            className="relative w-full shrink-0 snap-center"
+            style={{ aspectRatio: ratio }}
+            aria-label={`รูปที่ ${i + 1} จาก ${images.length}`}
+          >
             <Image
               src={src}
               alt=""
@@ -56,7 +68,8 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
               sizes="(max-width: 640px) 100vw, 600px"
               priority={priority && i === 0}
               draggable={false}
-              className="select-none object-cover"
+              onLoad={i === 0 ? onFirstLoad : undefined}
+              className="select-none object-contain"
             />
           </div>
         ))}
