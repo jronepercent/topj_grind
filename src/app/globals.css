@@ -157,7 +157,15 @@ body {
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 /* Bottom-fixed bars follow the real screen bottom (see ViewportGuard). */
-.tg-vv-bottom { translate: 0 var(--vv-shift, 0px); }
+.tg-vv-bottom {
+  translate: 0 calc(var(--vv-shift, 0px) + var(--bars-drop, 0px));
+  transition: translate 250ms var(--ease-apple);
+}
+/* Phones: scrolling down drops the bars by the tab bar's height — the tabs leave the screen and the
+   mini player slides into their place (see ViewportGuard). */
+@media (max-width: 639px) {
+  html[data-bars="hidden"] { --bars-drop: calc(3.5rem + 1px + env(safe-area-inset-bottom)); }
+}
 
 /* Motion — Apple easing */
 .tg-overlay[data-state="open"] { animation: fadeIn 250ms var(--ease-apple); }

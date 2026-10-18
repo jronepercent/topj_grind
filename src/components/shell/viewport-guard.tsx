@@ -41,6 +41,19 @@ export function ViewportGuard() {
       });
     };
 
+    // Hide the bottom bars while scrolling down, bring them back on scroll up (like the browser's own
+    // toolbar). iOS doesn't always report the toolbar collapsing, so following it can leave the tabs
+    // floating mid-screen; tucking them away with it sidesteps that.
+    let lastY = window.scrollY;
+    const onScrollDir = () => {
+      const y = window.scrollY;
+      const dy = y - lastY;
+      if (y < 64 || dy < -6) delete root.dataset.bars;
+      else if (dy > 6) root.dataset.bars = "hidden";
+      else return;
+      lastY = y;
+    };
+
     document.addEventListener("fullscreenchange", onFullscreen);
     document.addEventListener("webkitfullscreenchange", onFullscreen);
     document.addEventListener("gesturestart", onGesture, { passive: false });
@@ -49,6 +62,7 @@ export function ViewportGuard() {
     vv?.addEventListener("scroll", syncShift);
     window.addEventListener("resize", syncShift);
     window.addEventListener("scroll", syncShift, { passive: true });
+    window.addEventListener("scroll", onScrollDir, { passive: true });
     syncShift();
     return () => {
       cancelAnimationFrame(frame);
@@ -60,6 +74,8 @@ export function ViewportGuard() {
       vv?.removeEventListener("scroll", syncShift);
       window.removeEventListener("resize", syncShift);
       window.removeEventListener("scroll", syncShift);
+      window.removeEventListener("scroll", onScrollDir);
+      delete root.dataset.bars;
       if (meta) meta.content = locked;
     };
   }, []);
