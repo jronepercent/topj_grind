@@ -82,6 +82,13 @@ export interface PaymentPayload {
   method: PaymentMethod;
   reference: string;
   paid_at: string;
+  /** A coupon the seller applied on the payment platform: amount + discount must equal the price. */
+  discount?: number;
+  /**
+   * The authenticated sender identified the plan itself (Kohort: which payment link was paid), so the amount is recorded
+   * but not checked — coupons can make it anything. Only set by server code after the sender's secret was verified.
+   */
+  trusted_plan?: boolean;
 }
 
 /** payment_errors.reason for a paid webhook whose email/user_id matched nobody (the Kohort auto-claim looks for it). */
@@ -122,8 +129,15 @@ export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<Pay
   // A replay of an already-recorded reference was validated the first time; don't re-judge it.
   if (!duplicate) {
     const amount = Number(p.amount);
+    const discount = Number(p.discount) || 0;
     const currency = (p.currency || CURRENCY).toUpperCase();
-    if (currency !== CURRENCY || !Number.isFinite(amount) || Math.abs(amount - expected) > 0.005) {
+    // A coupon (signed / authenticated sender only) may lower what was paid, but paid + discount must still be the full price —
+    // unless the sender identified the plan itself (trusted_plan), then any amount ≥ 0 is recorded as paid.
+    const ok =
+      Number.isFinite(amount) &&
+      amount >= 0 &&
+      (p.trusted_plan === true || (discount >= 0 && Math.abs(amount + discount - expected) <= 0.005));
+    if (currency !== CURRENCY || !ok) {
       return reject(`ยอดเงินไม่ตรงกับแพ็กเกจ: ได้รับ ${p.amount} ${p.currency || ""} คาดว่า ${expected} ${CURRENCY} (${plan ?? `${months} เดือน`})`, "amount mismatch");
     }
   }
@@ -188,8 +202,11 @@ export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<Pu
   if (!duplicate) {
     const expected = Number(prod.data.price_thb);
     const amount = Number(p.amount);
+    const discount = Number(p.discount) || 0;
     const currency = (p.currency || CURRENCY).toUpperCase();
-    if (currency !== CURRENCY || !Number.isFinite(amount) || Math.abs(amount - expected) > 0.005) {
+    // A coupon (signed / authenticated sender only) may lower what was paid, but paid + discount must still be the full price.
+    const ok = Number.isFinite(amount) && amount >= 0 && discount >= 0 && Math.abs(amount + discount - expected) <= 0.005;
+    if (currency !== CURRENCY || !ok) {
       return reject(`ยอดเงินไม่ตรงกับสินค้า (${prod.data.title}): ได้รับ ${p.amount} ${p.currency || ""} คาดว่า ${expected} ${CURRENCY}`, "amount mismatch");
     }
   }

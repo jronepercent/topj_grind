@@ -127,13 +127,27 @@ function parseEmail(v: Scalar): string | null {
 }
 
 /** "฿990", "990.00", "4,990", "THB 990", 990 → number. */
+/**
+ * KOHORT_LINK_PLANS="<link_id>=yearly,<link_id>=monthly" — which Kohort payment link sells which plan. Every payment
+ * Kohort sends carries the link_id (see payment_errors / payments.raw for real ones).
+ */
+function linkPlans(): Record<string, PlanCode> {
+  const out: Record<string, PlanCode> = {};
+  for (const pair of (process.env.KOHORT_LINK_PLANS ?? "").split(/[,\s]+/)) {
+    const [id, code] = pair.split(/[=:]/).map((s) => s?.trim().toLowerCase());
+    if (id && code && isPlanCode(code)) out[id] = code;
+  }
+  return out;
+}
+
+/** 0 is a real amount (a 100% coupon on Kohort sends value 0); negatives and junk are not. */
 export function parseAmount(v: Scalar): number | null {
-  if (typeof v === "number") return Number.isFinite(v) && v > 0 ? v : null;
+  if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? v : null;
   if (typeof v !== "string") return null;
   const cleaned = v.replace(/,/g, "").replace(/[^0-9.\-]/g, "");
   if (!cleaned || cleaned === "." || cleaned === "-") return null;
   const n = Number(cleaned);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 const PLAN_PRICES = PLAN_LIST.map((p) => p.price);
@@ -158,6 +172,7 @@ function parseMethod(v: Scalar | undefined): PaymentMethod {
   if (isPaymentMethod(t)) return t;
   if (/promptpay|prompt_pay|พร้อมเพย์|\bqr/.test(t)) return "promptpay";
   if (/slip|bank|transfer|โอน|สลิป/.test(t)) return "slip";
+  if (/free|coupon|manual/.test(t)) return "manual"; // Kohort: a 100% coupon comes as method/provider "free"
   return "card";
 }
 
@@ -176,9 +191,10 @@ function parseDate(v: Scalar, now: number): string | null {
 // ───────────────────────── Normalizing ─────────────────────────
 
 const EMAIL_KEYS = ["email", "customer_email", "buyer_email", "user_email", "payer_email", "member_email"];
-// Kohort's own merge tags: {{value}} (amount), {{currency}}, {{product_name}}, {{event_id}}; the rest are guesses for other shapes.
+// Kohort posts { payload: { email, value, amount, product_name, link_id, payment_id, status, discount, coupon_code, ... } }.
+// payment_id comes before event_id: one payment can fire the workflow twice (two triggers), each with its own event_id.
 const AMOUNT_KEYS = ["amount", "value", "total", "price", "amount_paid", "amount_total", "paid_amount", "grand_total", "total_amount"];
-const REF_KEYS = ["reference", "event_id", "payment_id", "transaction_id", "order_id", "charge_id", "invoice_id", "payment_intent", "ref"];
+const REF_KEYS = ["reference", "payment_id", "event_id", "transaction_id", "order_id", "charge_id", "invoice_id", "payment_intent", "ref"];
 /** A bare `id` only counts at the top level or inside an object that is clearly the payment itself. */
 const ID_PARENTS = new Set(["payment", "transaction", "order", "invoice", "charge", "data", "purchase"]);
 const PLAN_TEXT_KEYS = ["plan", "plan_name", "product", "product_name", "product_title", "item", "item_name", "title", "description"];
@@ -270,11 +286,17 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
   const productRaw = [...find(leaves, ["product_id"])].map((l) => String(l.value).trim())[0];
   const product_id = productRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productRaw) ? productRaw : undefined;
 
-  // Plan: an explicit monthly/yearly, else words in the product text, else the amount.
+  // Plan: which Kohort payment link was paid (link_id → KOHORT_LINK_PLANS), else an explicit monthly/yearly, else words in
+  // the product name, else the amount. When the link or the name says which plan it is, the amount is NOT checked — the
+  // owner hands out many coupons on Kohort, and the shared secret already proves the call came from Kohort.
   let plan: PlanCode | undefined;
+  let planFrom: "link" | "explicit" | "name" | "amount" | null = null;
+  const linkId = [...find(leaves, ["link_id", "payment_link_id", "checkout_link_id"])].map((l) => String(l.value).trim().toLowerCase())[0];
   if (!product_id) {
+    const linked = linkId ? linkPlans()[linkId] : undefined;
+    if (linked) [plan, planFrom] = [linked, "link"];
     const explicit = [...find(leaves, ["plan"])].map((l) => String(l.value).trim().toLowerCase()).find(isPlanCode);
-    plan = explicit as PlanCode | undefined;
+    if (!plan && explicit) [plan, planFrom] = [explicit as PlanCode, "explicit"];
     if (!plan) {
       for (const l of find(leaves, PLAN_TEXT_KEYS)) {
         const p = planFromText(String(l.value));
@@ -295,11 +317,16 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
         }
       }
     }
+    if (plan && !planFrom) planFrom = "name";
     if (amount !== undefined) {
       amount = fixMinorUnits(amount, PLAN_PRICES);
-      if (!plan) plan = planByPrice(amount) ?? undefined;
+      if (!plan) {
+        plan = planByPrice(amount) ?? undefined;
+        if (plan) planFrom = "amount";
+      }
     }
   }
+  const trustedPlan = planFrom === "link" || planFrom === "explicit" || planFrom === "name";
 
   // Kohort sends no payment-method tag, so fall back to the product name: the one-time ("ลูกค้าต่ออายุเอง" /
   // พร้อมเพย์) products are PromptPay passes, the auto-renewing ones are card subscriptions.
@@ -335,14 +362,28 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
     reference = `kohort:${digest}`;
   }
 
+  // Kohort coupons: { amount/value: what was paid, discount: what the coupon took off, status: "paid" }.
+  let discount: number | undefined;
+  for (const l of find(leaves, ["discount", "discount_amount", "coupon_discount", "discount_value"])) {
+    const n = parseAmount(l.value);
+    if (n !== null) {
+      discount = n;
+      break;
+    }
+  }
+  const status = [...find(leaves, ["status", "payment_status"])].map((l) => String(l.value).trim().toLowerCase())[0];
+  const notPaid = status !== undefined && status !== "" && !/^(paid|approved|succeeded|success|successful|completed|complete)$/.test(status);
+
   const payload: PaymentPayload = {
     ...(email ? { email } : {}),
     ...(product_id ? { product_id } : plan ? { plan } : {}),
-    amount: amount ?? NaN,
+    amount: amount ?? (trustedPlan ? 0 : NaN),
     currency,
     method,
     reference,
     paid_at,
+    ...(discount ? { discount } : {}),
+    ...(trustedPlan ? { trusted_plan: true } : {}),
   };
   const raw = {
     source: "kohort",
@@ -355,10 +396,15 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
     reference,
     paid_at,
     reference_generated: referenceGenerated,
+    ...(discount ? { discount } : {}),
+    ...(status ? { status } : {}),
+    ...(linkId ? { link_id: linkId } : {}),
+    plan_from: planFrom,
+    trusted_plan: trustedPlan,
     original: slim(body),
     ...(Object.keys(query).length ? { query: slim(query) } : {}),
   };
-  const unmatched = !email ? "ไม่พบอีเมลในข้อมูล" : !(plan || product_id) ? "ไม่พบแพ็กเกจที่ตรงกัน (ชื่อสินค้า/ยอดเงินไม่ตรงแพ็กเกจใดเลย)" : amount === undefined ? "ไม่พบยอดเงินในข้อมูล" : null;
+  const unmatched = notPaid ? `สถานะยังไม่ใช่ชำระแล้ว (${status})` : !email ? "ไม่พบอีเมลในข้อมูล" : !(plan || product_id) ? `ไม่พบแพ็กเกจที่ตรงกัน (link_id ${linkId ?? "-"} ไม่อยู่ใน KOHORT_LINK_PLANS และชื่อสินค้า/ยอดเงินไม่บอกแพ็ก)` : amount === undefined && !trustedPlan ? "ไม่พบยอดเงินในข้อมูล" : null;
   return { payload, raw, referenceGenerated, paidAtGiven, unmatched };
 }
 
@@ -453,8 +499,8 @@ export async function claimKohortPayments(userId: string, email: string | null |
         if (typeof p.product_id === "string" && p.product_id) {
           const r = await applyPurchase({ ...base, product_id: p.product_id }, raw);
           if (r.status !== 200) continue;
-        } else if (isPlanCode(p.plan) && Math.abs(amount - PLANS[p.plan].price) < 0.005) {
-          const r = await applyPayment({ ...base, plan: p.plan }, raw);
+        } else if (isPlanCode(p.plan) && (p.trusted_plan === true || Math.abs(amount - PLANS[p.plan].price) < 0.005)) {
+          const r = await applyPayment({ ...base, amount: Number.isFinite(amount) ? amount : 0, plan: p.plan, trusted_plan: p.trusted_plan === true }, raw);
           if (r.status !== 200) continue;
         } else {
           continue; // not a valid plan/amount pair → leave it for the owner
