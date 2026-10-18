@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { rateLimit } from "@/lib/server/auth";
-import { fixProductAmount, logUnmatchedKohort, normalizeKohort, parseKohortBody } from "@/lib/server/kohort";
+import { fixProductAmount, logRejectedKohort, logUnmatchedKohort, normalizeKohort, parseKohortBody } from "@/lib/server/kohort";
 import { applyPayment, applyPurchase } from "@/lib/server/mutations";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +41,12 @@ function clientIp(req: Request) {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
 }
 
-/** Lets the owner paste the URL into a browser to see it is alive. Returns nothing about members or payments. */
-export function GET() {
+/**
+ * Without ?secret: lets the owner paste the URL into a browser to see it is alive (returns nothing about members).
+ * With ?secret: handled exactly like POST, in case the webhook action calls the URL with GET.
+ */
+export function GET(req: Request) {
+  if (new URL(req.url).searchParams.has("secret")) return POST(req);
   return new NextResponse("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 export function HEAD() {
@@ -63,8 +67,20 @@ export async function POST(req: Request) {
 
   const ip = clientIp(req);
   if (!rateLimit(`kohort:${ip}`, 120, 60_000)) return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
-  if (!suppliedSecrets(req).some((s) => sameSecret(s, secret))) {
+  const supplied = suppliedSecrets(req);
+  if (!supplied.some((s) => sameSecret(s, secret))) {
     console.warn(`kohort webhook: bad secret from ${ip}`);
+    // Leave a trace the owner can see in Studio (never the secret itself), at most a few per minute per IP.
+    if (rateLimit(`kohort-bad:${ip}`, 5, 60_000)) {
+      await logRejectedKohort({
+        method: req.method,
+        query: queryParams(req),
+        contentType: req.headers.get("content-type") ?? "",
+        secret_given: supplied.length > 0,
+        secret_lengths: supplied.map((s) => s.length),
+        expected_length: secret.length,
+      }).catch(() => {});
+    }
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

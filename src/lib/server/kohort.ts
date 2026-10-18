@@ -384,6 +384,14 @@ export async function logUnmatchedKohort(
   if (error) throw new Error(`payment_errors: ${error.message}`);
 }
 
+/** A rejected call (wrong / missing secret), so a mis-pasted Kohort URL shows up in Studio instead of failing silently. */
+export async function logRejectedKohort(info: Record<string, unknown>) {
+  const { error } = await adminDb()
+    .from("payment_errors")
+    .insert({ payload: { source: "kohort_rejected", ...info }, reason: "Kohort: secret ไม่ตรง" });
+  if (error) throw new Error(`payment_errors: ${error.message}`);
+}
+
 /** A product purchase may be sent in satang too; compare against that product's price (one cheap lookup). */
 export async function fixProductAmount(p: PaymentPayload): Promise<void> {
   if (!p.product_id || !Number.isFinite(p.amount)) return;
