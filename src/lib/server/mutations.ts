@@ -71,6 +71,8 @@ export function extendFrom(current: string | null, days: number, now = Date.now(
 export interface PaymentPayload {
   user_id?: string;
   email?: string;
+  /** Shop purchase: the product that was bought. Sent instead of `plan`; the expected amount is the product's price. */
+  product_id?: string;
   amount: number;
   currency: string;
   /** Preferred: which plan was bought. Period and expected amount come from src/lib/plans.ts. */
@@ -152,6 +154,71 @@ export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<Pay
   });
   if (error) throw new Error(`apply_payment: ${error.message}`);
   return { status: 200, expires_at: data as string, duplicate };
+}
+
+export type PurchaseResult = { status: 200; purchase_id: string; duplicate: boolean } | { status: 404 | 400; error: string };
+
+/**
+ * Shop purchase confirmed by the payment gateway (webhook payload with `product_id`). Same rules as applyPayment:
+ * the amount must equal the product's price in THB, otherwise it is logged to payment_errors and nothing is granted;
+ * a replayed reference is a no-op. The apply_purchase() database function does the atomic, idempotent part.
+ */
+export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<PurchaseResult> {
+  if (!p || typeof p.reference !== "string" || !p.reference || p.reference.length > 200) return { status: 400, error: "missing reference" };
+  const db = adminDb();
+  const reject = async (reason: string, error: string): Promise<PurchaseResult> => {
+    await db.from("payment_errors").insert({ payload: raw, reason });
+    return { status: 400, error };
+  };
+  if (!p.product_id || !isUuid(p.product_id)) return reject("สินค้าไม่ถูกต้อง: ไม่มี product_id ที่ใช้ได้", "invalid product");
+  if (!isPaymentMethod(p.method)) return reject(`ช่องทางชำระเงินไม่ถูกต้อง: ${String(p.method).slice(0, 40)}`, "invalid method");
+
+  const prod = await db.from("products").select("id, title, price_thb").eq("id", p.product_id).is("deleted_at", null).maybeSingle();
+  if (prod.error) throw new Error(`purchase product: ${prod.error.message}`);
+  if (!prod.data) return reject(`ไม่พบสินค้า ${p.product_id}`, "product not found");
+
+  const dup = await db.from("purchases").select("user_id").eq("reference", p.reference).maybeSingle();
+  if (dup.error) throw new Error(`purchase reference: ${dup.error.message}`);
+  const duplicate = !!dup.data;
+
+  // A replay of an already-recorded reference was validated the first time; don't re-judge it.
+  if (!duplicate) {
+    const expected = Number(prod.data.price_thb);
+    const amount = Number(p.amount);
+    const currency = (p.currency || CURRENCY).toUpperCase();
+    if (currency !== CURRENCY || !Number.isFinite(amount) || Math.abs(amount - expected) > 0.005) {
+      return reject(`ยอดเงินไม่ตรงกับสินค้า (${prod.data.title}): ได้รับ ${p.amount} ${p.currency || ""} คาดว่า ${expected} ${CURRENCY}`, "amount mismatch");
+    }
+  }
+
+  let userId: string | null = null;
+  if (p.user_id && isUuid(p.user_id)) {
+    const { data } = await db.from("profiles").select("id").eq("id", p.user_id).maybeSingle();
+    userId = data?.id ?? null;
+  }
+  if (!userId && p.email) {
+    const { data } = await db.rpc("user_id_by_email", { p_email: String(p.email) });
+    userId = (data as string | null) ?? null;
+  }
+  if (!userId && dup.data) userId = dup.data.user_id;
+  if (!userId) {
+    await db.from("payment_errors").insert({ payload: raw, reason: "ไม่พบผู้ใช้" });
+    return { status: 404, error: "user not found" };
+  }
+
+  const { data, error } = await db.rpc("apply_purchase", {
+    p_user_id: userId,
+    p_product_id: p.product_id,
+    p_amount: Number(p.amount) || 0,
+    p_currency: p.currency || CURRENCY,
+    p_method: p.method,
+    p_reference: p.reference,
+    p_paid_at: p.paid_at || nowIso(),
+    p_raw: raw as object,
+    p_manual: false,
+  });
+  if (error) throw new Error(`apply_purchase: ${error.message}`);
+  return { status: 200, purchase_id: data as string, duplicate };
 }
 
 export async function audit(adminId: string, action: string, target_type: string, target_id: string, note = "") {

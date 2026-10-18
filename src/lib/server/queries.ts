@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { adminDb, must } from "@/lib/supabase/clients";
 import { isActiveUntil } from "./auth";
@@ -116,10 +117,58 @@ export function toPublic(c: ContentRow | Content): Content {
   return { ...rest, published_at: liveAt(c), has_captions: (c as Content).has_captions ?? !!captions_vtt };
 }
 
-export function canWatch(viewer: Viewer | null, c: Pick<ContentRow, "visibility">) {
+/**
+ * May this viewer watch / listen? Public → anyone. Members-only → admins, members, and buyers of a course product whose
+ * playlist contains the clip. Pass `unlocked` (from ownedCourseContentIds) so the course rule is applied without a query;
+ * leave it out for the plain membership rule, or use canWatchContent() when you only have a viewer.
+ */
+export function canWatch(viewer: Viewer | null, c: Pick<ContentRow, "visibility"> & { id?: string }, unlocked?: ReadonlySet<string> | null) {
   if (c.visibility === "public") return true;
-  return !!viewer && (viewer.is_admin || viewer.is_member);
+  if (!viewer) return false;
+  if (viewer.is_admin || viewer.is_member) return true;
+  return !!c.id && !!unlocked?.has(c.id);
 }
+
+/** Async form of canWatch() that also honours course purchases (one cached lookup per request). */
+export async function canWatchContent(viewer: Viewer | null, c: Pick<ContentRow, "visibility"> & { id: string }) {
+  if (canWatch(viewer, c)) return true;
+  if (!viewer) return false;
+  return canWatch(viewer, c, await ownedCourseContentIds(viewer.id));
+}
+
+// ───────────────────────── Shop: course purchases unlock a playlist ─────────────────────────
+/** True when an error only means “the shop tables are not there yet” (migration 0013 not applied). */
+export function isMissingRelation(err: { code?: string; message?: string } | null | undefined) {
+  if (!err) return false;
+  return err.code === "42P01" || err.code === "PGRST205" || /could not find the table|does not exist/i.test(err.message ?? "");
+}
+
+/**
+ * Ids of the clips a signed-in user unlocked by buying a course product (every item of the product's playlist).
+ * Ownership survives a product being unpublished or deleted. Cached per request.
+ */
+export const ownedCourseContentIds = cache(async (userId: string): Promise<ReadonlySet<string>> => {
+  const none: ReadonlySet<string> = new Set();
+  if (!isUuid(userId)) return none;
+  const db = adminDb();
+  const bought = await db.from("purchases").select("product_id").eq("user_id", userId).eq("status", "paid");
+  if (bought.error) {
+    if (isMissingRelation(bought.error)) return none;
+    throw new Error(`purchases: ${bought.error.message}`);
+  }
+  const productIds = (bought.data ?? []).map((r) => r.product_id as string);
+  if (!productIds.length) return none;
+  const prods = await db
+    .from("products")
+    .select("course_playlist_id")
+    .in("id", productIds)
+    .eq("product_type", "course")
+    .not("course_playlist_id", "is", null);
+  if (prods.error) throw new Error(`course products: ${prods.error.message}`);
+  const playlists = new Set((prods.data ?? []).map((p) => p.course_playlist_id as string));
+  if (!playlists.size) return none;
+  return new Set((await catalog()).items.filter((i) => playlists.has(i.playlist_id)).map((i) => i.content_id));
+});
 
 /** Shorts were replaced by ชุมชน: old `short` rows may remain in the DB but never surface in any list. */
 const isListed = (c: Pick<ContentRow, "type">) => c.type !== "short";

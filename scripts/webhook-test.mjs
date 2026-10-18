@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Fire a signed test payment at the local webhook.
-// Usage: npm run webhook:test -- <email> [monthly|yearly] [card|promptpay] [reference] [--amount=N]
+// Membership: npm run webhook:test -- <email> [monthly|yearly] [card|promptpay] [reference] [--amount=N]
 //   npm run webhook:test -- me@example.com yearly promptpay
+// Shop product: npm run webhook:test -- <email> [card|promptpay] [reference] --product=<product id> [--amount=N]
+//   npm run webhook:test -- me@example.com card --product=3f2c1a9e-... (amount defaults to the product's price)
+//   Looks the price up with --price=N, e.g. --price=1290 (the same number as the product's price_thb in Studio).
 import { createHmac, randomUUID } from "node:crypto";
 import fs from "node:fs";
 
@@ -28,10 +31,22 @@ const flags = Object.fromEntries(
     .filter((a) => a.startsWith("--"))
     .map((a) => a.slice(2).split("=")),
 );
-const [email = "free@topjgrind.test", plan = "monthly", method = "card", reference = `TEST-${randomUUID().slice(0, 8)}`] = process.argv
-  .slice(2)
-  .filter((a) => !a.startsWith("--"));
-if (!(plan in PLANS)) {
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const productId = flags.product;
+// Product purchase: <email> [method] [reference]; membership: <email> [plan] [method] [reference]
+const email = positional[0] ?? "free@topjgrind.test";
+const plan = productId ? undefined : (positional[1] ?? "monthly");
+const method = (productId ? positional[1] : positional[2]) ?? "card";
+const reference = (productId ? positional[2] : positional[3]) ?? `TEST-${randomUUID().slice(0, 8)}`;
+if (productId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) {
+  console.error("--product must be a product id (uuid) from Studio → ร้านค้า");
+  process.exit(1);
+}
+if (productId && flags.amount === undefined && flags.price === undefined) {
+  console.error("pass --price=<the product's price in baht> (or --amount=N to test a mismatch)");
+  process.exit(1);
+}
+if (!productId && !(plan in PLANS)) {
   console.error(`plan must be one of: ${Object.keys(PLANS).join(", ")}`);
   process.exit(1);
 }
@@ -47,9 +62,10 @@ if (!secret) {
 }
 const body = JSON.stringify({
   email,
-  amount: flags.amount !== undefined ? Number(flags.amount) : PLANS[plan], // --amount=1 to test the mismatch check
+  // --amount=1 to test the mismatch check
+  amount: flags.amount !== undefined ? Number(flags.amount) : productId ? Number(flags.price) : PLANS[plan],
   currency: "THB",
-  plan,
+  ...(productId ? { product_id: productId } : { plan }),
   method,
   reference,
   paid_at: new Date().toISOString(),

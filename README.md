@@ -20,6 +20,7 @@ npm run dev
 | `npm run db:seed` | ใส่ข้อมูลตัวอย่าง · `-- --force` ใส่ใหม่ · `-- --remove` ลบออกทั้งหมด |
 | `npm run db:make-admin -- อีเมล` | ให้สิทธิ์ Studio กับบัญชีที่สมัครแล้ว (ใช้กับบัญชีจริงของ JR) |
 | `npm run webhook:test -- <email> [monthly\|yearly] [card\|promptpay] [reference] [--amount=N]` | ยิง webhook ชำระเงินทดสอบ (ราคาแพ็กเกจอยู่ใน `src/lib/plans.ts`) |
+| `npm run webhook:test -- <email> [card\|promptpay] --product=<id> --price=<ราคา> [--amount=N]` | ยิง webhook ซื้อสินค้าในร้านค้า (id และราคาดูได้ที่ Studio → ร้านค้า) |
 
 **โหมดเดโม** (`NEXT_PUBLIC_DEMO_MODE=true`): ปุ่ม DEMO มุมซ้ายล่างสลับเข้าบัญชีทดลอง (`admin@ / member@ / soon@ / free@topjgrind.test`) รหัสผ่านอยู่ใน `DEMO_PASSWORD` ใน `.env.local`
 ⚠️ **ก่อนเปิดเว็บจริง:** `npm run db:seed -- --remove` และตั้ง `NEXT_PUBLIC_DEMO_MODE=false` — บัญชีทดลองเป็นผู้ใช้จริงในฐานข้อมูลจริง (รวม admin ทดลอง)
@@ -31,7 +32,7 @@ npm run dev
 | หน้าคนดู | `src/app/(site)/` — Home, Watch, Community (ชุมชน/บทความ), Podcasts, Playlists, Search, Library, About, Membership, Account |
 | Auth | `src/app/(auth)/`, `src/app/auth/magic` |
 | Studio (Admin) | `src/app/studio/`, `src/components/studio/` |
-| API | `/api/play/[id]` (ออก URL เล่นหลังเช็กสิทธิ์), `/api/webhooks/payment`, `/api/webhooks/bunny`, `/api/cron/*`, `/api/resources/[id]`, `/api/studio/members` |
+| API | `/api/play/[id]` (ออก URL เล่นหลังเช็กสิทธิ์), `/api/webhooks/payment` (สมาชิก: `plan` · ร้านค้า: `product_id`), `/api/shop/download/[productId]` (ดาวน์โหลดสินค้าที่ซื้อ — เช็กสิทธิ์แล้วส่ง signed URL 60 วินาที), `/api/webhooks/bunny`, `/api/cron/*`, `/api/resources/[id]`, `/api/studio/members` |
 | ข้อมูล | `src/lib/supabase/clients.ts` (userDb = สิทธิ์ผู้ใช้/RLS, adminDb = service role) · `src/lib/server/` — `queries.ts` (catalogue cache 30 วิ), `mutations.ts`, `auth.ts` (Supabase Auth), `media.ts`, `bunny.ts` |
 | Player | `src/components/player/` — custom controls บน Vidstack + global mini player |
 | Database จริง | `supabase/migrations/0001_init.sql` — schema ครบ + RLS ทุกตาราง + `apply_payment()` + pg_cron |

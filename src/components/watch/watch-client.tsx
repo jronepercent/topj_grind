@@ -28,6 +28,8 @@ export interface WatchData {
   related: Content[];
   playlist: { meta: PlaylistWithMeta; items: Content[] } | null;
   progress: ProgressMap;
+  /** Members-only clips the viewer may watch anyway (they bought the course product that contains them). */
+  unlockedIds?: string[];
 }
 
 function hrefWithList(c: Content, listId?: string) {
@@ -37,6 +39,7 @@ function hrefWithList(c: Content, listId?: string) {
 
 export function WatchClient({ data, children }: { data: WatchData; children: React.ReactNode }) {
   const { c, locked, chapters, related, playlist, progress } = data;
+  const unlocked = React.useMemo(() => new Set(data.unlockedIds ?? []), [data.unlockedIds]);
   const { viewer } = useViewer();
   const router = useRouter();
   const params = useSearchParams();
@@ -86,7 +89,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
   const listIdx = playlist ? playlist.items.findIndex((x) => x.id === c.id) : -1;
   const nextItem: Content | undefined = playlist
     ? playlist.items[listIdx + 1]
-    : related.find((r) => r.visibility === "public" || viewer?.is_member) ?? related[0];
+    : related.find((r) => r.visibility === "public" || viewer?.is_member || unlocked.has(r.id)) ?? related[0];
   const nextHref = nextItem ? hrefWithList(nextItem, playlist?.meta.id) : null;
   const autoplay = playlist ? plAutoplay : viewer ? viewer.autoplay : true;
 
@@ -138,6 +141,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
       {ended && (
         <EndScreen
           next={nextItem}
+          nextUnlocked={!!nextItem && unlocked.has(nextItem.id)}
           href={nextHref}
           autoplay={autoplay}
           inPlaylist={!!playlist}
@@ -191,6 +195,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
             items={playlist.items}
             current={c.id}
             progress={progress}
+            unlocked={unlocked}
             autoplay={plAutoplay}
             setAutoplay={(v) => {
               setPlAutoplay(v);
@@ -213,6 +218,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
 
 function EndScreen({
   next,
+  nextUnlocked,
   href,
   autoplay,
   inPlaylist,
@@ -220,6 +226,7 @@ function EndScreen({
   onGo,
 }: {
   next?: Content;
+  nextUnlocked?: boolean;
   href: string | null;
   autoplay: boolean;
   inPlaylist: boolean;
@@ -227,7 +234,7 @@ function EndScreen({
   onGo: () => void;
 }) {
   const { viewer } = useViewer();
-  const nextLocked = next?.visibility === "members" && !viewer?.is_member;
+  const nextLocked = next?.visibility === "members" && !viewer?.is_member && !nextUnlocked;
   const [count, setCount] = React.useState(autoplay && next && !nextLocked ? 5 : -1);
   React.useEffect(() => {
     if (count < 0) return;
@@ -286,9 +293,11 @@ function PlaylistBox({
   items,
   current,
   progress,
+  unlocked,
   autoplay,
   setAutoplay,
 }: {
+  unlocked: ReadonlySet<string>;
   meta: PlaylistWithMeta;
   items: Content[];
   current: string;
@@ -330,7 +339,7 @@ function PlaylistBox({
           {items.map((it, i) => {
             const active = it.id === current;
             const done = progress[it.id]?.completed;
-            const locked = it.visibility === "members" && !viewer?.is_member;
+            const locked = it.visibility === "members" && !viewer?.is_member && !unlocked.has(it.id);
             return (
               <li key={it.id}>
                 <Link

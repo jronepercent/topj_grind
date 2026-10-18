@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getViewer, rateLimit } from "@/lib/server/auth";
-import { canWatch, getContentRow, isLive } from "@/lib/server/queries";
+import { canWatchContent, getContentRow, isLive } from "@/lib/server/queries";
 import { playbackFor } from "@/lib/server/media";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!c || (!isLive(c) && !viewer?.is_admin)) {
     return NextResponse.json({ error: "not_found" }, { status: 404, headers });
   }
-  if (!canWatch(viewer, c)) {
+  if (!(await canWatchContent(viewer, c))) {
     return NextResponse.json({ error: "members_only" }, { status: viewer ? 403 : 401, headers });
   }
   const pb = await playbackFor(c);

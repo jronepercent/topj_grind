@@ -16,6 +16,7 @@ import {
   Newspaper,
   Plus,
   Settings,
+  ShoppingBag,
   Users,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
@@ -32,6 +33,7 @@ const NAV = [
   { href: "/studio/comments", label: "ความคิดเห็น", icon: MessageSquare },
   { href: "/studio/community", label: "ชุมชน", icon: MessagesSquare },
   { href: "/studio/articles", label: "บทความ", icon: Newspaper },
+  { href: "/studio/shop", label: "ร้านค้า", icon: ShoppingBag },
   { href: "/studio/members", label: "สมาชิก", icon: Users },
   { href: "/studio/home", label: "จัดหน้า Home", icon: House },
   { href: "/studio/settings", label: "ตั้งค่า", icon: Settings },
@@ -173,6 +175,11 @@ function CreateMenu() {
         <DropdownItem asChild>
           <Link href="/studio/articles/new">
             <Newspaper /> เขียนบทความ
+          </Link>
+        </DropdownItem>
+        <DropdownItem asChild>
+          <Link href="/studio/shop/new">
+            <ShoppingBag /> เพิ่มสินค้า
           </Link>
         </DropdownItem>
         <DropdownItem asChild>

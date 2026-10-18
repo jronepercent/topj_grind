@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
 import {
   canWatch,
+  ownedCourseContentIds,
   getChapters,
   getContent,
   getLinks,
@@ -40,7 +41,9 @@ export default async function WatchPage({ params, searchParams }: Props) {
   if (c.type === "short") redirect("/community");
   if (c.type === "podcast") redirect(`/podcasts/${id}`);
 
-  const locked = !canWatch(viewer, c);
+  // Buyers of a course product can watch its members-only lessons without a membership.
+  const unlockedSet = viewer && !viewer.is_member ? await ownedCourseContentIds(viewer.id).catch(() => null) : null;
+  const locked = !canWatch(viewer, c, unlockedSet);
   const chapters = getChapters(c);
   // Independent lookups in parallel — this page's server time is the sum of the slowest, not of all.
   const [p, pl, rel, comments, liked, saved, links, resources] = await Promise.all([
@@ -71,6 +74,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
           related: rel,
           playlist: inList ? { meta: pl, items: plItems } : null,
           progress,
+          unlockedIds: unlockedSet ? [...unlockedSet].filter((x) => x === id || rel.some((r) => r.id === x) || plItems.some((p) => p.id === x)) : [],
         }}
       >
         <div className="flex items-start gap-2">
@@ -82,7 +86,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
           <ActionsBar c={c} liked={liked} saved={saved} />
         </div>
         <div className="mt-4">
-          <DescriptionBox c={c} chapters={chapters} links={links} resources={resources} />
+          <DescriptionBox c={c} chapters={chapters} links={links} resources={resources} unlocked={!!unlockedSet?.has(id)} />
         </div>
         <div className="mt-6">
           <Comments contentId={id} visibility={c.visibility} enabled={c.comments_enabled} initial={comments} />

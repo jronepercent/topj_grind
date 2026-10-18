@@ -26,10 +26,13 @@ export interface CurationSection {
 const TYPE_DESC: Record<HomeSectionType, string> = {
   hero: "Hero",
   continue: "ดูต่อจากที่ค้างไว้ (เฉพาะผู้ที่เข้าสู่ระบบ)",
-  latest: "คลิปใหม่ล่าสุดอัตโนมัติ",
-  shorts: "บทความล่าสุดอัตโนมัติ",
+  latest: "ล่าสุดรวมวิดีโอ พอดแคสต์ และบทความ (อัตโนมัติ)",
+  products: "สินค้าแนะนำจากร้านค้า (อัตโนมัติ)",
+  videos: "วิดีโอล่าสุดอัตโนมัติ",
+  articles: "บทความล่าสุดอัตโนมัติ",
   podcasts: "พอดแคสต์ล่าสุดอัตโนมัติ",
   playlists: "Playlist และซีรีส์ทั้งหมด",
+  all: "คอนเทนต์ทั้งหมด + ตัวกรองหมวด (ท้ายหน้า)",
   custom: "แถบที่เลือกคลิปเอง",
 };
 
@@ -70,10 +73,10 @@ export function HomeCuration({ sections: initial, items }: { sections: CurationS
       <Card>
         <CardHeader
           title="แถบบนหน้า Home"
-          description="เปิด/ปิด เปลี่ยนชื่อ และลากเพื่อเรียงลำดับ"
+          description="แต่ละแถบเลื่อนไปทางขวาได้บนมือถือ — เปิด/ปิด เปลี่ยนชื่อ และลากเพื่อเรียงลำดับ แถบอัตโนมัติจะซ่อนเองเมื่อไม่มีเนื้อหา"
           action={
             <Button variant="outline" size="sm" onClick={addCustom}>
-              <Plus /> เพิ่มแถบ
+              <Plus /> เพิ่มแถบเลือกคลิปเอง
             </Button>
           }
         />

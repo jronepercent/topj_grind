@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check, Headphones, Lock, Play, RotateCcw } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
-import { getPlaylist, playlistItems, progressMap } from "@/lib/server/queries";
+import { getPlaylist, ownedCourseContentIds, playlistItems, progressMap } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
 import { MemberBadge } from "@/components/ui/misc";
 import { contentHref, formatDuration, formatLongDuration, formatNumber, TYPE_LABEL } from "@/lib/format";
@@ -30,6 +30,7 @@ export default async function PlaylistPage({ params }: { params: Params }) {
   if (!playlist) notFound();
 
   const items = await playlistItems(id);
+  const unlocked = viewer && !viewer.is_member ? await ownedCourseContentIds(viewer.id).catch(() => null) : null;
   const progress = await progressMap(viewer?.id, items.map((c) => c.id));
   const withList = (c: { id: string; type: string }) => `${contentHref(c)}?list=${encodeURIComponent(id)}`;
   const firstUnfinished = items.find((c) => !progress[c.id]?.completed) ?? items[0];
@@ -106,7 +107,7 @@ export default async function PlaylistPage({ params }: { params: Params }) {
               const p = progress[c.id];
               const completed = !!p?.completed;
               const ratio = completed ? 1 : p && c.duration_sec ? p.position_sec / c.duration_sec : 0;
-              const locked = c.visibility === "members" && !viewer?.is_member;
+              const locked = c.visibility === "members" && !viewer?.is_member && !unlocked?.has(c.id);
               const current = c.id === firstUnfinished?.id && started && !completed;
               return (
                 <li key={c.id}>

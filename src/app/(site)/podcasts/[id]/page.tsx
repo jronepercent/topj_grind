@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
-import { getChapters, getContent, getLinks, getProgress, getResources, listComments, listContent } from "@/lib/server/queries";
+import { getChapters, getContent, getLinks, getProgress, getResources, listComments, listContent, ownedCourseContentIds } from "@/lib/server/queries";
 import { EpisodeControls, ShowNotes } from "@/components/podcast/podcast-client";
 import { Comments } from "@/components/social/comments";
 import { ChannelRow } from "@/components/watch/actions-bar";
@@ -28,7 +28,8 @@ export default async function EpisodePage({ params }: Props) {
   const queue = all.some((x) => x.id === c.id) ? all : [c, ...all];
   const chapters = getChapters(c);
   const p = await getProgress(viewer?.id, id);
-  const locked = c.visibility === "members" && !viewer?.is_member;
+  const unlocked = viewer && !viewer.is_member ? !!(await ownedCourseContentIds(viewer.id).catch(() => null))?.has(c.id) : false;
+  const locked = c.visibility === "members" && !viewer?.is_member && !unlocked;
   const more = all.filter((x) => x.id !== id).slice(0, 6);
 
   return (

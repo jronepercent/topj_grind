@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getViewer } from "@/lib/server/auth";
 import { history, likedContent, playlistItems, playlistsWithMeta, popular, progressMap, savedContent } from "@/lib/server/queries";
+import { myPurchases } from "@/lib/server/shop";
 import { EmptyState } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { thaiDate } from "@/lib/format";
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const TABS: LibraryTab[] = ["overview", "history", "later", "liked", "courses"];
+const TABS: LibraryTab[] = ["overview", "history", "later", "liked", "courses", "purchases"];
 
 /** YYYY-MM-DD in Asia/Bangkok. */
 function dayKey(d: Date | string) {
@@ -75,6 +76,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         later={await savedContent(viewer.id)}
         liked={await likedContent(viewer.id)}
         courses={learning}
+        purchases={await myPurchases(viewer.id)}
         progress={progress}
         saveHistory={saveHistory}
         suggestions={await popular(4)}

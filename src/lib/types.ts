@@ -201,7 +201,12 @@ export interface Notification {
   created_at: string;
 }
 
-export type HomeSectionType = "hero" | "continue" | "latest" | "shorts" | "podcasts" | "playlists" | "custom";
+/**
+ * Home rows. `hero` is the on/off switch for the carousel; `custom` is a hand-picked row;
+ * the rest are automatic rows: latest (mixed newest), products, videos, articles, podcasts, playlists,
+ * and `all` (the "browse everything" feed with filter chips).
+ */
+export type HomeSectionType = "hero" | "continue" | "latest" | "products" | "videos" | "articles" | "podcasts" | "playlists" | "all" | "custom";
 
 export interface HomeSection {
   id: string;

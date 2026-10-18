@@ -348,11 +348,14 @@ export function buildSeed() {
   const home_sections = [
     { id: "hs-hero", type: "hero" as const, title: "Hero", content_ids: ["v01", "v05", "v02", "p01", "v10"], position: 0, enabled: true },
     { id: "hs-continue", type: "continue" as const, title: "ดูต่อจากที่ค้างไว้", content_ids: [], position: 1, enabled: true },
-    { id: "hs-start", type: "custom" as const, title: "เริ่มต้นที่นี่", content_ids: ["v03", "v02", "v06", "v11"], position: 2, enabled: true },
-    { id: "hs-latest", type: "latest" as const, title: "ใหม่ล่าสุด", content_ids: [], position: 3, enabled: true },
-    { id: "hs-shorts", type: "shorts" as const, title: "Shorts", content_ids: [], position: 4, enabled: true },
-    { id: "hs-podcasts", type: "podcasts" as const, title: "พอดแคสต์", content_ids: [], position: 5, enabled: true },
-    { id: "hs-playlists", type: "playlists" as const, title: "Playlist และซีรีส์", content_ids: [], position: 6, enabled: true },
+    { id: "hs-latest", type: "latest" as const, title: "ใหม่ล่าสุด", content_ids: [], position: 2, enabled: true },
+    { id: "hs-products", type: "products" as const, title: "สินค้าแนะนำ", content_ids: [], position: 3, enabled: true },
+    { id: "hs-videos", type: "videos" as const, title: "วิดีโอ", content_ids: [], position: 4, enabled: true },
+    { id: "hs-articles", type: "articles" as const, title: "บทความ", content_ids: [], position: 5, enabled: true },
+    { id: "hs-podcasts", type: "podcasts" as const, title: "พอดแคสต์", content_ids: [], position: 6, enabled: true },
+    { id: "hs-playlists", type: "playlists" as const, title: "Playlist และซีรีส์", content_ids: [], position: 7, enabled: true },
+    { id: "hs-start", type: "custom" as const, title: "เริ่มต้นที่นี่", content_ids: ["v03", "v02", "v06", "v11"], position: 8, enabled: true },
+    { id: "hs-all", type: "all" as const, title: "คอนเทนต์ทั้งหมด", content_ids: [], position: 9, enabled: true },
   ];
 
   // ~28 days of view history so Studio charts have shape

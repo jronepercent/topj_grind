@@ -22,6 +22,7 @@ export function DescriptionBox({
   resources,
   onTime,
   label = "การดู",
+  unlocked = false,
 }: {
   c: Content;
   chapters: Chapter[];
@@ -29,6 +30,8 @@ export function DescriptionBox({
   resources: Omit<ContentResource, "storage_path">[];
   onTime?: (sec: number) => void;
   label?: string;
+  /** The viewer bought a course product containing this clip, so its files are theirs too. */
+  unlocked?: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const [overflows, setOverflows] = React.useState(true);
@@ -63,7 +66,7 @@ export function DescriptionBox({
         <div className="mt-5 space-y-6" onClick={(e) => e.stopPropagation()}>
           {chapters.length > 0 && <ChaptersRow chapters={chapters} thumb={c.thumbnail_url} onJump={jump} />}
           {links.length > 0 && <LinksBlock links={links} />}
-          {resources.length > 0 && <ResourcesBlock resources={resources} visibility={c.visibility} />}
+          {resources.length > 0 && <ResourcesBlock resources={resources} visibility={c.visibility} unlocked={unlocked} />}
         </div>
       )}
 
@@ -140,10 +143,10 @@ function LinksBlock({ links }: { links: ContentLink[] }) {
   );
 }
 
-function ResourcesBlock({ resources, visibility }: { resources: Omit<ContentResource, "storage_path">[]; visibility: Content["visibility"] }) {
+function ResourcesBlock({ resources, visibility, unlocked }: { resources: Omit<ContentResource, "storage_path">[]; visibility: Content["visibility"]; unlocked?: boolean }) {
   const { viewer } = useViewer();
   const href = useSubscribeHref();
-  const locked = !viewer?.is_member;
+  const locked = !viewer?.is_member && !unlocked;
   return (
     <div>
       <h3 className="mb-3 flex items-center gap-2 font-semibold">

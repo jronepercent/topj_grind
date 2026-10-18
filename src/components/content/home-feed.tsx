@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 type Chip = { key: string; label: string; query: Omit<FeedQuery, "offset" | "limit"> };
 
-/** Sticky category chips. Filtering happens in place — no page reload. */
+/** The "คอนเทนต์ทั้งหมด" browse area: sticky category chips; filtering happens in place — no page reload. `children` is the unfiltered feed. */
 export function HomeFeed({
   categories,
   initialFilter,
@@ -34,6 +34,12 @@ export function HomeFeed({
   const [active, setActive] = React.useState(chips.some((c) => c.key === initialFilter) ? initialFilter! : "all");
   const [items, setItems] = React.useState<Content[] | null>(null);
   const chip = chips.find((c) => c.key === active)!;
+
+  // "ดูทั้งหมด" links on the home rows navigate to /?filter=… — follow the URL when it changes.
+  React.useEffect(() => {
+    setActive(chips.some((c) => c.key === initialFilter) ? initialFilter! : "all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFilter]);
 
   React.useEffect(() => {
     if (active === "all") return;

@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock, History, House, Info, Library, ListVideo, MessagesSquare, Podcast, User } from "lucide-react";
+import { Clock, History, House, Info, Library, ListVideo, MessagesSquare, Podcast, ShoppingBag, User } from "lucide-react";
 import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { Logo } from "@/components/ui/logo";
 import { useUI } from "@/lib/stores/player";
@@ -15,6 +15,7 @@ const PRIMARY: NavItem[] = [
   { href: "/community", label: "ชุมชน", icon: MessagesSquare },
   { href: "/podcasts", label: "พอดแคสต์", icon: Podcast },
   { href: "/playlists", label: "Playlist", icon: ListVideo },
+  { href: "/shop", label: "ร้านค้า", icon: ShoppingBag },
 ];
 const YOU: NavItem[] = [
   { href: "/library", label: "คลังของฉัน", icon: Library },

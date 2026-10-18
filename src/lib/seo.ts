@@ -78,3 +78,49 @@ export function articleJsonLd(a: ArticleSeo, path: string, authorName: string) {
     inLanguage: "th",
   };
 }
+
+// ───────── Shop (ร้านค้า) ─────────
+interface ProductSeo {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  description: string;
+  cover_url: string | null;
+  images: string[];
+  price_thb: number;
+  updated_at: string;
+}
+
+const productImages = (p: ProductSeo) => [...new Set([p.cover_url, ...p.images].filter((u): u is string => !!u))];
+
+export function productMetadata(p: ProductSeo, path: string): Metadata {
+  const description = p.subtitle || excerpt(p.description, 160) || `${p.title} · สินค้าดิจิทัลจาก TOPJ_GRIND`;
+  const images = productImages(p).slice(0, 4).map((url) => ({ url }));
+  return {
+    title: p.title,
+    description,
+    alternates: { canonical: path },
+    openGraph: { title: p.title, description, url: path, type: "website", images: images.length ? images : undefined },
+    twitter: { card: "summary_large_image", title: p.title, description, images: images.length ? images.map((i) => i.url) : undefined },
+  };
+}
+
+export function productJsonLd(p: ProductSeo, path: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: p.title,
+    description: p.subtitle || excerpt(p.description, 300) || undefined,
+    image: productImages(p),
+    sku: p.id,
+    url: `${SITE}${path}`,
+    offers: {
+      "@type": "Offer",
+      url: `${SITE}${path}`,
+      price: p.price_thb.toFixed(2),
+      priceCurrency: "THB",
+      availability: "https://schema.org/InStock",
+      itemCondition: "https://schema.org/NewCondition",
+    },
+  };
+}

@@ -9,18 +9,23 @@ import type { CheckoutMethod, PlanCode } from "@/lib/plans";
  * Confirmation comes back separately through POST /api/webhooks/payment (HMAC signed, see applyPayment()).
  *
  * To add a real gateway (Stripe Checkout, Omise, …): write a `PaymentGateway` that creates a hosted checkout
- * session for { plan, method } with the user id as client reference, return its URL, and select it in `resolveGateway()`.
+ * session for { plan | product, method } with the user id as client reference, return its URL, and select it in `resolveGateway()`.
+ * Two things can be bought: a membership plan (kind "plan", the default) or a shop product (kind "product", one-off).
  * Then point that gateway's webhook at our endpoint (or translate its event into our payload there).
  */
 
-export interface CheckoutInput {
+interface CheckoutBase {
   /** Only the id leaves the server — never email or other personal data. */
   userId: string;
-  plan: PlanCode;
   method: CheckoutMethod;
   /** Same-origin path to return to after paying (already validated). */
   from?: string;
 }
+
+/** Membership plan (the original shape — `kind` may be left out) or a one-off shop product. */
+export type CheckoutInput =
+  | (CheckoutBase & { kind?: "plan"; plan: PlanCode })
+  | (CheckoutBase & { kind: "product"; productId: string });
 
 export interface CheckoutSession {
   url: string;
@@ -44,22 +49,28 @@ export const CHECKOUT_UNAVAILABLE = "ระบบชำระเงินยั�
 /** Demo: skip the gateway and land on the success page, which waits for `npm run webhook:test`. */
 const demoGateway: PaymentGateway = {
   id: "demo",
-  async createCheckout({ plan, method, from }) {
-    const q = new URLSearchParams({ demo: "1", plan, method });
-    if (from) q.set("from", from);
+  async createCheckout(input) {
+    const q = new URLSearchParams({ demo: "1", method: input.method });
+    if (input.kind === "product") {
+      if (input.from) q.set("from", input.from);
+      return { url: `/shop/${encodeURIComponent(input.productId)}/success?${q}`, external: false };
+    }
+    q.set("plan", input.plan);
+    if (input.from) q.set("from", input.from);
     return { url: `/membership/success?${q}`, external: false };
   },
 };
 
-/** Generic hosted payment page (PAYMENT_URL). It gets only an opaque user id, the plan and the method. */
+/** Generic hosted payment page (PAYMENT_URL). It gets only an opaque user id, the plan (or product id) and the method. */
 function redirectGateway(base: URL): PaymentGateway {
   return {
     id: "redirect",
-    async createCheckout({ userId, plan, method }) {
+    async createCheckout(input) {
       const u = new URL(base);
-      u.searchParams.set("uid", userId);
-      u.searchParams.set("plan", plan);
-      u.searchParams.set("method", method);
+      u.searchParams.set("uid", input.userId);
+      if (input.kind === "product") u.searchParams.set("product", input.productId);
+      else u.searchParams.set("plan", input.plan);
+      u.searchParams.set("method", input.method);
       return { url: u.toString(), external: true };
     },
   };

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { applyPayment, type PaymentPayload } from "@/lib/server/mutations";
+import { applyPayment, applyPurchase, type PaymentPayload } from "@/lib/server/mutations";
 
 export const dynamic = "force-dynamic";
 const MAX_BODY = 16 * 1024;
@@ -18,6 +18,9 @@ function validSignature(raw: string, header: string | null, secret: string) {
  * Payment Integration Contract (spec §9.1). Body: { email | user_id, plan: "monthly" | "yearly", amount, currency: "THB",
  * method, reference, paid_at }. `plan` sets the period (30 / 365 days) and the amount we expect (see src/lib/plans.ts);
  * a wrong amount is logged to payment_errors and nothing is granted. Legacy `months` is still accepted instead of `plan`.
+ *
+ * Shop purchase: send `product_id` (uuid of a product) instead of `plan`. The expected amount is that product's price_thb;
+ * same signature, currency, method, reference and idempotency rules. Replies { purchase_id, duplicate }.
  */
 export async function POST(req: Request) {
   const secret = process.env.PAYMENT_WEBHOOK_SECRET;
@@ -40,6 +43,13 @@ export async function POST(req: Request) {
   }
 
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid json" }, { status: 400 });
+
+  // A shop purchase carries product_id (instead of plan); everything else is a membership payment.
+  if (body.product_id !== undefined && body.product_id !== null) {
+    const bought = await applyPurchase(body, body);
+    if (bought.status !== 200) return NextResponse.json({ error: bought.error }, { status: bought.status });
+    return NextResponse.json({ purchase_id: bought.purchase_id, duplicate: bought.duplicate });
+  }
 
   const result = await applyPayment(body, body);
   if (result.status !== 200) return NextResponse.json({ error: result.error }, { status: result.status });

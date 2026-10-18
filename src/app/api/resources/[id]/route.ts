@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getViewer, isDemoMode } from "@/lib/server/auth";
 import { adminDb } from "@/lib/supabase/clients";
-import { getContentRow, isLive, isUuid } from "@/lib/server/queries";
+import { getContentRow, isLive, isUuid, ownedCourseContentIds } from "@/lib/server/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { data: res } = await adminDb().from("content_resources").select("*").eq("id", id).maybeSingle();
   const c = res ? await getContentRow(res.content_id) : null;
   if (!res || !c || (!isLive(c) && !viewer?.is_admin)) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (!viewer?.is_member) return NextResponse.json({ error: "members_only" }, { status: viewer ? 403 : 401 });
+  // Members, or buyers of a course product whose playlist contains this clip.
+  if (!viewer) return NextResponse.json({ error: "members_only" }, { status: 401 });
+  if (!viewer.is_member && !(await ownedCourseContentIds(viewer.id)).has(c.id)) return NextResponse.json({ error: "members_only" }, { status: 403 });
 
   const signed = await adminDb().storage.from("resources").createSignedUrl(res.storage_path, 600, { download: res.file_name });
   if (signed.data?.signedUrl) return NextResponse.redirect(signed.data.signedUrl);

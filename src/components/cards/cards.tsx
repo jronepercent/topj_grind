@@ -93,13 +93,16 @@ function VisibilityBadge({ c }: { c: Content }) {
   return <MemberBadge locked={locked} className={cn("absolute left-2 top-2", !locked && "bg-black/60 backdrop-blur")} />;
 }
 
-export function VideoCard({ c, progress, priority }: { c: Content; progress?: ProgressMap; priority?: boolean }) {
+const VIDEO_SIZES = "(max-width:640px) 100vw, (max-width:1024px) 50vw, (max-width:1440px) 33vw, 25vw";
+
+/** `sizes` lets horizontal rows tell next/image the card is narrower than a grid cell. */
+export function VideoCard({ c, progress, priority, sizes }: { c: Content; progress?: ProgressMap; priority?: boolean; sizes?: string }) {
   const href = contentHref(c);
   const { preview, onEnter, onLeave } = useHoverPreview(href, !!c.preview_url);
   return (
     <article className="group relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <Link href={href} className="block rounded-[12px]" aria-label={c.title}>
-        <Thumb src={c.thumbnail_url} alt="" sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, (max-width:1440px) 33vw, 25vw" priority={priority}>
+        <Thumb src={c.thumbnail_url} alt="" sizes={sizes ?? VIDEO_SIZES} priority={priority}>
           {preview && c.preview_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={c.preview_url} alt="" className="absolute inset-0 size-full object-cover" />
@@ -217,12 +220,12 @@ export function PodcastPlayButton({ c, queue, size = "md", startAt }: { c: Conte
   );
 }
 
-export function PodcastCard({ c, queue, progress }: { c: Content; queue?: Content[]; progress?: ProgressMap }) {
+export function PodcastCard({ c, queue, progress, sizes }: { c: Content; queue?: Content[]; progress?: ProgressMap; sizes?: string }) {
   const ratio = progressRatio(c, progress);
   return (
     <article className="group relative w-full">
       <Link href={`/podcasts/${c.id}`} className="block" aria-label={c.title}>
-        <Thumb src={c.thumbnail_url} alt="" ratio="1/1" sizes="(max-width:640px) 45vw, 220px">
+        <Thumb src={c.thumbnail_url} alt="" ratio="1/1" sizes={sizes ?? "(max-width:640px) 45vw, 220px"}>
           <VisibilityBadge c={c} />
           <ProgressBar value={ratio} />
         </Thumb>
@@ -242,7 +245,7 @@ export function PodcastCard({ c, queue, progress }: { c: Content; queue?: Conten
   );
 }
 
-export function PlaylistCard({ p }: { p: PlaylistWithMeta }) {
+export function PlaylistCard({ p, sizes }: { p: PlaylistWithMeta; sizes?: string }) {
   const pct = p.item_count ? Math.round((p.completed_count / p.item_count) * 100) : 0;
   return (
     <article className="group relative">
@@ -251,7 +254,7 @@ export function PlaylistCard({ p }: { p: PlaylistWithMeta }) {
         <div className="relative pt-2">
           <div className="absolute inset-x-6 top-0 h-4 rounded-t-[12px] bg-[var(--border-strong)] opacity-60" aria-hidden />
           <div className="absolute inset-x-3 top-1 h-4 rounded-t-[12px] bg-[var(--border-strong)]" aria-hidden />
-          <Thumb src={p.first_thumb} alt="" sizes="(max-width:640px) 100vw, 360px" className="relative">
+          <Thumb src={p.first_thumb} alt="" sizes={sizes ?? "(max-width:640px) 100vw, 360px"} className="relative">
             <div className="absolute inset-y-0 right-0 flex w-[38%] flex-col items-center justify-center gap-1 bg-black/70 text-white backdrop-blur-sm">
               <span className="tnum text-[20px] font-semibold">{p.item_count}</span>
               <span className="text-[12px]">ตอน</span>
