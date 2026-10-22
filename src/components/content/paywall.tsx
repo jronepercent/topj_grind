@@ -8,12 +8,10 @@ import { formatNumber } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-/** Where the subscribe button should go — guests sign in first, then come back. */
+/** Where the subscribe button should go: the plans page for everyone. Guests create an account there, after picking a plan. */
 export function useSubscribeHref() {
-  const { viewer } = useViewer();
   const pathname = usePathname();
-  const membership = `/membership?from=${encodeURIComponent(pathname)}`;
-  return viewer ? membership : `/signup?next=${encodeURIComponent(membership)}`;
+  return `/membership?from=${encodeURIComponent(pathname)}`;
 }
 
 export function Paywall({

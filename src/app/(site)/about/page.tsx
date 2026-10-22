@@ -6,13 +6,16 @@ import { getViewer } from "@/lib/server/auth";
 import { countContent, siteSettings } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
+import { excerpt } from "@/lib/richtext";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await siteSettings();
+  // The about text says what the channel is; the tagline is a slogan and reads badly as a search snippet.
+  const description = excerpt(s.about, 160) || s.tagline;
   return {
     title: "เกี่ยวกับช่อง",
-    description: s.tagline || s.about.slice(0, 160),
-    openGraph: { title: s.channel_name, description: s.tagline, images: s.banner_url ? [s.banner_url] : undefined },
+    description,
+    openGraph: { title: s.channel_name, description, images: s.banner_url ? [s.banner_url] : undefined },
   };
 }
 
@@ -25,7 +28,7 @@ export default async function AboutPage() {
   ];
   const socials = s.socials.filter((x) => /^https?:\/\//i.test(x.url));
   const membership = "/membership?from=%2Fabout";
-  const subscribeHref = viewer ? membership : `/signup?next=${encodeURIComponent(membership)}`;
+  const subscribeHref = membership;
   const showSubscribe = !viewer?.is_member;
 
   return (

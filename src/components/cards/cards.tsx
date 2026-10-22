@@ -7,7 +7,7 @@ import { Check, Headphones, Lock, Pause, Play } from "lucide-react";
 import { useViewer } from "@/components/providers";
 import { MemberBadge } from "@/components/ui/misc";
 import { ContentMenu } from "./content-menu";
-import { contentHref, formatCount, formatDuration, formatLongDuration, thaiDate, timeAgo } from "@/lib/format";
+import { contentHref, formatCount, formatDuration, formatLongDuration, showViews, thaiDate, timeAgo } from "@/lib/format";
 import type { Content, PlaylistWithMeta } from "@/lib/types";
 import { usePlayer, type PlayerItem } from "@/lib/stores/player";
 import { cn } from "@/lib/utils";
@@ -125,7 +125,8 @@ export function VideoCard({ c, progress, priority, sizes }: { c: Content; progre
             <h3 className="line-clamp-2 text-[15px] font-semibold leading-[21px]">{c.title}</h3>
           </Link>
           <p className="t-meta tnum mt-1">
-            การดู {formatCount(c.view_count)} ครั้ง · {timeAgo(c.published_at)}
+            {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
+            {timeAgo(c.published_at)}
           </p>
         </div>
         <ContentMenu content={c} className="-mr-1 self-start" />
@@ -174,7 +175,9 @@ export function RowCard({
           <h3 className={cn("line-clamp-2 font-semibold", size === "lg" ? "text-[17px] leading-6" : "text-[14px] leading-5")}>{c.title}</h3>
         </Link>
         <p className="t-meta tnum mt-1">
-          {c.type === "podcast" ? "พอดแคสต์ · " : ""}การดู {formatCount(c.view_count)} ครั้ง · {timeAgo(c.published_at)}
+          {c.type === "podcast" ? "พอดแคสต์ · " : ""}
+          {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
+          {timeAgo(c.published_at)}
         </p>
         {size === "lg" && <p className="t-meta mt-2 line-clamp-2">{c.description.split("\n")[0]}</p>}
         {extra}

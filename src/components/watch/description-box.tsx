@@ -7,7 +7,7 @@ import { useViewer } from "@/components/providers";
 import { useSubscribeHref } from "@/components/content/paywall";
 import { MemberBadge } from "@/components/ui/misc";
 import { seekTo } from "@/lib/stores/bus";
-import { formatBytes, formatDuration, formatNumber, thaiDate } from "@/lib/format";
+import { formatBytes, formatDuration, formatNumber, showViews, thaiDate } from "@/lib/format";
 import { hostOf } from "@/lib/richtext";
 import type { Chapter, Content, ContentLink, ContentResource } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,8 @@ export function DescriptionBox({
       onClick={() => !expanded && setExpanded(true)}
     >
       <p className="font-semibold tnum">
-        {label} {formatNumber(c.view_count)} ครั้ง · {thaiDate(c.published_at)}
+        {showViews(c.view_count) && `${label} ${formatNumber(c.view_count)} ครั้ง · `}
+        {thaiDate(c.published_at)}
         {c.tags.slice(0, 3).map((t) => (
           <Link key={t} href={`/search?q=${encodeURIComponent("#" + t)}`} className="ml-2 font-medium text-[#3ea6ff] hover:underline" onClick={(e) => e.stopPropagation()}>
             #{t}

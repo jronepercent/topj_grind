@@ -14,6 +14,18 @@ const nextConfig: NextConfig = {
     authInterrupts: true, // enables forbidden() → real 403 for /studio
     serverActions: { bodySizeLimit: "3mb" }, // thumbnails ≤ 2MB
   },
+  async redirects() {
+    // The old production host keeps serving a duplicate site. Send people (and Google) to the real domain;
+    // /api stays reachable there because payment/video webhooks are registered against it.
+    return [
+      {
+        source: "/:path((?!api/).*)",
+        has: [{ type: "host", value: "topj-grind.vercel.app" }],
+        destination: "https://topjgrind.com/:path",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

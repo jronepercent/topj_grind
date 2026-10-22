@@ -338,6 +338,8 @@ export async function moderatePostComment(admin: Viewer, id: string, hide: boole
 
 // ───────────────────────── Articles ─────────────────────────
 export const ARTICLE_PAGE = 12;
+/** Unfilled draft markers, e.g. "[ลิงก์ภายใน: วิดีโอ…]", "[ใส่ตัวเลขจริง]", "[TODO]" (a real "[text](url)" link is fine). */
+const DRAFT_GAP = /\[\s*(ลิงก์ภายใน|ใส่|เติม|placeholder|todo|tbd)[^\]\n]*\](?!\()/i;
 const ARTICLE_META = `id, title, excerpt, cover_url, visibility, status, is_pinned, is_hidden, like_count, comment_count, read_min, published_at, updated_at, author_id, ${PROFILE}`;
 
 type ArticleRow = {
@@ -447,6 +449,9 @@ export async function saveArticle(admin: Viewer, input: ArticleInput) {
   const body = input.body;
   if (body.length > POST_LIMITS.article) throw new HttpError(400, "เนื้อหายาวเกินไป (สูงสุด 60,000 ตัวอักษร)");
   if (input.status === "published" && !body.trim()) throw new HttpError(400, "เขียนเนื้อหาก่อนเผยแพร่");
+  // AI drafts mark gaps as "[ลิงก์ภายใน: …]" / "[ใส่ …]"; one of these reached a live article once.
+  const gap = input.status === "published" ? `${title}\n${input.excerpt}\n${body}`.match(DRAFT_GAP) : null;
+  if (gap) throw new HttpError(400, `ยังมีช่องที่ต้องเติมก่อนเผยแพร่: ${gap[0].slice(0, 80)}`);
   const excerpt = (input.excerpt.trim() || mdExcerpt(body, 200)).slice(0, POST_LIMITS.excerpt);
   let cover = input.cover_url?.trim() || null;
   if (cover) {

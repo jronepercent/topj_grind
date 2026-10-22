@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   applicationName: "TOPJ_GRIND",
   appleWebApp: { capable: true, title: "TOPJ_GRIND", statusBarStyle: "black-translucent" },
   openGraph: { siteName: "TOPJ_GRIND", locale: "th_TH", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {

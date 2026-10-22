@@ -12,7 +12,7 @@ export function ArticleCard({ a, locked, variant = "row", className }: { a: Arti
   const cover = (
     <div className={cn("relative aspect-video overflow-hidden rounded-[12px] bg-elevated", variant === "row" ? "sm:w-60 sm:shrink-0" : "w-full")}>
       {a.cover_url ? (
-        <Image src={a.cover_url} alt="" fill sizes={variant === "row" ? "(max-width:640px) 100vw, 240px" : "(max-width:640px) 70vw, 320px"} className="object-cover" />
+        <Image src={a.cover_url} alt={a.title} fill sizes={variant === "row" ? "(max-width:640px) 100vw, 240px" : "(max-width:640px) 70vw, 320px"} className="object-cover" />
       ) : (
         <div className="flex size-full items-center justify-center text-text-2">
           <BookOpen className="size-8" strokeWidth={1.5} aria-hidden />

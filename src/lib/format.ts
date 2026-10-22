@@ -6,6 +6,10 @@ function trim(n: number) {
   return s.endsWith(".0") ? s.slice(0, -2) : s;
 }
 
+/** Below this, view counts stay hidden on the site: "การดู 0 ครั้ง" tells a new visitor nobody watches. Studio always shows them. */
+export const MIN_SHOWN_VIEWS = 100;
+export const showViews = (n: number) => n >= MIN_SHOWN_VIEWS;
+
 /** 1.2 พัน · 3.4 หมื่น · 1.1 แสน · 2.5 ล้าน */
 export function formatCount(n: number): string {
   if (n < 1000) return String(n);

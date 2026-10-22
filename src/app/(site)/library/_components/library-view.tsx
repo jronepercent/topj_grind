@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useViewer } from "@/components/providers";
 import { ProductCard } from "@/components/shop/product-card";
-import { contentHref, formatCount, formatDuration, thaiDate, timeAgo, TYPE_LABEL } from "@/lib/format";
+import { contentHref, formatCount, formatDuration, thaiDate, timeAgo, TYPE_LABEL, showViews } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
 import { PRODUCT_TYPE_LABEL, deliveryInfo, formatBaht, productHref, type PurchaseView } from "@/lib/shop";
 import type { Content, PlaylistWithMeta } from "@/lib/types";
@@ -447,7 +447,8 @@ function LibRow({ c, progress, onRemove, removeLabel }: { c: Content; progress: 
           <h3 className="line-clamp-2 text-[15px] font-semibold leading-[21px] sm:text-[17px] sm:leading-6">{c.title}</h3>
         </Link>
         <p className="t-meta tnum mt-1">
-          การดู {formatCount(c.view_count)} ครั้ง · {timeAgo(c.published_at)}
+          {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
+          {timeAgo(c.published_at)}
         </p>
         <p className="t-meta mt-2 hidden sm:line-clamp-2">{c.description.split("\n")[0]}</p>
       </div>
