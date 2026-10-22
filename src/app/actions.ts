@@ -168,6 +168,13 @@ export async function setAutoplayAction(enabled: boolean) {
   });
 }
 
+export async function setEmailUpdatesAction(enabled: boolean) {
+  return run(async () => {
+    const v = await requireUser();
+    await updateOwnProfile(v.id, { email_updates: enabled });
+  });
+}
+
 export async function updateProfileAction(input: { display_name?: string; avatar_url?: string | null }) {
   return run(async () => {
     const v = await requireUser();

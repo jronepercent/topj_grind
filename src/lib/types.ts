@@ -16,6 +16,8 @@ export interface Profile {
   autoplay: boolean;
   theme: ThemePref;
   save_history: boolean;
+  /** Opt-out for new-content emails (migration 0015). Read on /account, not part of Viewer. */
+  email_updates?: boolean;
   created_at: string;
 }
 

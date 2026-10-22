@@ -33,7 +33,7 @@ npm run dev
 | หน้าคนดู | `src/app/(site)/` — Home, Watch, Community (ชุมชน/บทความ), Podcasts, Playlists, Search, Library, About, Membership, Account |
 | Auth | `src/app/(auth)/`, `src/app/auth/magic` |
 | Studio (Admin) | `src/app/studio/`, `src/components/studio/` |
-| API | `/api/play/[id]` (ออก URL เล่นหลังเช็กสิทธิ์), `/api/webhooks/payment` (สมาชิก: `plan` · ร้านค้า: `product_id`), `/api/webhooks/kohort` (Kohort — ดูหัวข้อด้านล่าง), `/api/shop/download/[productId]` (ดาวน์โหลดสินค้าที่ซื้อ — เช็กสิทธิ์แล้วส่ง signed URL 60 วินาที), `/api/webhooks/bunny`, `/api/cron/*`, `/api/resources/[id]`, `/api/studio/members` |
+| API | `/api/play/[id]` (ออก URL เล่นหลังเช็กสิทธิ์), `/api/webhooks/payment` (สมาชิก: `plan` · ร้านค้า: `product_id`), `/api/webhooks/kohort` (Kohort — ดูหัวข้อด้านล่าง), `/api/shop/download/[productId]` (ดาวน์โหลดสินค้าที่ซื้อ — เช็กสิทธิ์แล้วส่ง signed URL 60 วินาที), `/api/webhooks/bunny`, `/api/cron/*`, `/api/resources/[id]`, `/api/studio/members`, `/api/studio/email` (ส่งอีเมลแจ้งเตือน — ดูหัวข้อด้านล่าง), `/api/email/unsubscribe` |
 | ข้อมูล | `src/lib/supabase/clients.ts` (userDb = สิทธิ์ผู้ใช้/RLS, adminDb = service role) · `src/lib/server/` — `queries.ts` (catalogue cache 30 วิ), `mutations.ts`, `auth.ts` (Supabase Auth), `media.ts`, `bunny.ts` |
 | Player | `src/components/player/` — custom controls บน Vidstack + global mini player |
 | Database จริง | `supabase/migrations/0001_init.sql` — schema ครบ + RLS ทุกตาราง + `apply_payment()` + pg_cron |
@@ -83,6 +83,28 @@ curl -X POST "https://<site>/api/webhooks/kohort?secret=<SECRET>&email=member@ex
 # เครื่องตัวเอง (อ่าน KOHORT_WEBHOOK_SECRET จาก .env.local ไม่พิมพ์ออกหน้าจอ)
 npm run webhook:test -- --kohort member@example.com monthly card [reference] [--amount=N] [--json] [--no-ref]
 ```
+
+## อีเมลแจ้งเตือน
+
+ใน Studio กดปุ่ม **ส่งอีเมลแจ้งเตือน** ที่คลิป/พอดแคสต์ (ตารางคอนเทนต์และหน้าแก้ไข) บทความ (รายการและหน้าแก้ไข) หรือโพสต์ชุมชน เพื่อเลือกส่งถึง "ทุกคน" หรือ "เฉพาะสมาชิก" ดูจำนวนผู้รับ แก้หัวข้อ ดูตัวอย่าง แล้วยืนยัน — ส่งได้เฉพาะรายการที่เผยแพร่แล้ว ระบบเตือนถ้าเคยส่งรายการนี้ให้กลุ่มเดิมแล้ว และบันทึกผลทุกครั้งในตาราง `email_broadcasts`
+
+ผู้รับ = บัญชีที่ยืนยันอีเมลแล้ว ไม่ถูกแบน และไม่ได้ปิดรับ (`profiles.email_updates`, เปิดเป็นค่าเริ่มต้น) — ผู้ใช้ปิดเองได้ที่หน้าบัญชีของฉัน หรือกด "ยกเลิกรับอีเมลแจ้งเตือน" ท้ายอีเมล (`/unsubscribe`, รองรับ one-click ตาม RFC 8058 ที่ `/api/email/unsubscribe`)
+
+**ตั้งค่า**
+
+1. สมัคร [Resend](https://resend.com) แล้วเพิ่มโดเมน `topjgrind.com` (Domains → Add) ใส่ DNS ที่ Resend ให้ (SPF, DKIM, และแนะนำ DMARC) จนสถานะเป็น Verified
+2. สร้าง API key (Sending access) ใน Resend
+3. ใส่ env บน Vercel (และ `.env.local`):
+
+| ตัวแปร | ค่า |
+|---|---|
+| `RESEND_API_KEY` | API key จาก Resend |
+| `EMAIL_FROM` | ผู้ส่ง เช่น `TOPJ_GRIND <updates@topjgrind.com>` (ต้องเป็นโดเมนที่ verify แล้ว) |
+| `EMAIL_UNSUBSCRIBE_SECRET` | สตริงสุ่มยาวๆ ใช้เซ็นลิงก์ยกเลิก (เปลี่ยนค่าแล้วลิงก์ในอีเมลที่ส่งไปแล้วจะใช้ไม่ได้) |
+
+4. รัน migration `0015_email_broadcasts.sql` (`npm run db:migrate`) — เพิ่มคอลัมน์ `email_updates`, ตาราง `email_broadcasts`, ฟังก์ชัน `email_recipients()` / `email_recipient_counts()`
+
+ถ้ายังไม่ตั้ง env ปุ่มส่งจะแสดง "ระบบอีเมลยังไม่ได้ตั้งค่า" และกดส่งไม่ได้ · การส่งหนึ่งครั้งใช้เวลาไม่เกินราว 1 นาที (Resend รับ 2 คำขอ/วินาที, 100 ฉบับ/คำขอ) เกินเวลา ระบบหยุดแล้วบันทึกว่าส่งไม่ครบ — ฐานผู้รับระดับหลายพันคนควรย้ายไปส่งเป็นงานเบื้องหลัง
 
 ## ขึ้นระบบจริง (ยังต้องทำ)
 

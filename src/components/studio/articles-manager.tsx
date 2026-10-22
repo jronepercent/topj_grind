@@ -2,12 +2,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, ExternalLink, EllipsisVertical, Pencil, Pin, PinOff, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ExternalLink, EllipsisVertical, Mail, Pencil, Pin, PinOff, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { Dropdown, DropdownContent, DropdownItem, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "./confirm";
+import { SendEmailDialog } from "./send-email-button";
 import { Card, Dot, VisibilityLabel } from "./ui";
 import { deleteArticleAction, pinArticleAction } from "@/app/studio/community-actions";
 import { formatNumber, thaiDate } from "@/lib/format";
@@ -16,10 +17,13 @@ import { cn } from "@/lib/utils";
 
 type Filter = "all" | "published" | "draft";
 
+const articleLive = (r: StudioArticleRow) => r.status === "published" && !!r.published_at && new Date(r.published_at).getTime() <= Date.now();
+
 export function ArticlesManager({ rows }: { rows: StudioArticleRow[] }) {
   const router = useRouter();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [del, setDel] = React.useState<StudioArticleRow | null>(null);
+  const [emailFor, setEmailFor] = React.useState<StudioArticleRow | null>(null);
   const shown = rows.filter((r) => filter === "all" || r.status === filter);
   const counts = { all: rows.length, published: rows.filter((r) => r.status === "published").length, draft: rows.filter((r) => r.status === "draft").length };
 
@@ -123,6 +127,13 @@ export function ArticlesManager({ rows }: { rows: StudioArticleRow[] }) {
                         {r.is_pinned ? <PinOff /> : <Pin />} {r.is_pinned ? "เลิกปักหมุด" : "ปักหมุดไว้บนสุด"}
                       </DropdownItem>
                     )}
+                    <DropdownItem
+                      disabled={!articleLive(r)}
+                      title={articleLive(r) ? undefined : "ส่งอีเมลได้เมื่อเผยแพร่แล้วเท่านั้น"}
+                      onSelect={() => setEmailFor(r)}
+                    >
+                      <Mail /> ส่งอีเมลแจ้งเตือน
+                    </DropdownItem>
                     <DropdownSeparator />
                     <DropdownItem className="text-danger [&_svg]:text-danger" onSelect={() => setDel(r)}>
                       <Trash2 /> ลบ
@@ -135,6 +146,7 @@ export function ArticlesManager({ rows }: { rows: StudioArticleRow[] }) {
         </Card>
       )}
 
+      {emailFor && <SendEmailDialog type="article" id={emailFor.id} title={emailFor.title || "(ไม่มีชื่อ)"} onClose={() => setEmailFor(null)} />}
       <ConfirmDialog
         open={!!del}
         onOpenChange={(o) => !o && setDel(null)}

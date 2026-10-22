@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import type { ContentType, Visibility } from "@/lib/types";
 import type { EditorData, EditorOptions } from "./types";
 import { SortableItem, SortableList } from "./sortable";
+import { emailDisabledReason, SendEmailButton } from "./send-email-button";
 import { selectStyle } from "./ui";
 import { useUploads } from "./upload-store";
 import {
@@ -239,6 +240,8 @@ export function ContentEditor({ data, options }: { data: EditorData; options: Ed
   };
 
   const titleLen = form.title.length;
+  const emailLive =
+    data.status === "published" && data.media_status === "ready" && form.type !== "short" && !!data.published_at && new Date(data.published_at).getTime() <= Date.now();
   const isNewDraft = data.status === "draft" && !data.publish_when_ready;
 
   return (
@@ -249,6 +252,7 @@ export function ContentEditor({ data, options }: { data: EditorData; options: Ed
         </Link>
         <div className="ml-auto flex items-center gap-2">
           <AutosaveIndicator state={saveState} dirty={dirty} savedAt={savedAt} draft={isNewDraft} />
+          <SendEmailButton type="content" id={data.id} title={form.title || data.title} disabledReason={emailDisabledReason(emailLive)} />
           <Button asChild variant="ghost" size="sm">
             <a href={contentHref({ id: data.id, type: form.type })} target="_blank" rel="noopener noreferrer">
               ดูบนเว็บ <ArrowUpRight />

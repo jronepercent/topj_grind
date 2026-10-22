@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getViewer } from "@/lib/server/auth";
+import { adminDb } from "@/lib/supabase/clients";
 import { paymentsFor } from "@/lib/server/queries";
 import { subscriptionFor } from "@/lib/server/queries";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,8 @@ export default async function AccountPage() {
   const cookieTheme = (await cookies()).get("tg_theme")?.value;
   const theme: ThemePref = cookieTheme === "light" || cookieTheme === "system" || cookieTheme === "dark" ? cookieTheme : viewer.theme;
   const sub = await subscriptionFor(viewer.id);
+  // Own read (not in getViewer): before migration 0015 the column is missing, and that must not log everyone out.
+  const { data: prefs } = await adminDb().from("profiles").select("email_updates").eq("id", viewer.id).maybeSingle<{ email_updates: boolean }>();
   const payments = (await paymentsFor(viewer.id)).map((p) => ({
     id: p.id,
     paid_at: p.paid_at,
@@ -56,6 +59,7 @@ export default async function AccountPage() {
         <AccountView
           viewer={viewer}
           theme={theme}
+          emailUpdates={prefs?.email_updates ?? true}
           daysLeft={viewer.expires_at ? daysUntil(viewer.expires_at) : null}
           firstPaidAt={sub?.first_paid_at ?? null}
           payments={payments}

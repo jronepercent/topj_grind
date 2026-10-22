@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArchiveRestore, ChartColumn, Eye, Globe, Link2, ListPlus, Lock, Pencil, Search, Trash, X } from "lucide-react";
+import { ArchiveRestore, ChartColumn, Eye, Globe, Link2, ListPlus, Lock, Mail, Pencil, Search, Trash, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from "@/components/ui/dropdown";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import type { ContentType, Visibility } from "@/lib/types";
 import type { DailyPoint, StudioContentRow } from "./types";
 import { ConfirmDialog } from "./confirm";
+import { SendEmailDialog } from "./send-email-button";
 import { DailyBars, dateCell, selectClass, selectStyle, StatusCell, StudioThumb, VisibilityLabel } from "./ui";
 
 type StatusFilter = "all" | "published" | "scheduled" | "draft" | "processing" | "failed";
@@ -40,6 +41,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [playlistFor, setPlaylistFor] = React.useState<string[] | null>(null);
   const [statsFor, setStatsFor] = React.useState<StudioContentRow | null>(null);
+  const [emailFor, setEmailFor] = React.useState<StudioContentRow | null>(null);
   const [confirm, setConfirm] = React.useState<null | { ids: string[]; op: "delete" | "purge" }>(null);
 
   const live = rows.filter((r) => !r.deleted_at);
@@ -308,7 +310,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
                                 {r.title}
                               </Link>
                             )}
-                            <RowActions r={r} trash={tab === "trash"} onStats={() => setStatsFor(r)} onCopy={() => copyLink(r)} onRun={run} onPurge={() => setConfirm({ ids: [r.id], op: "purge" })} />
+                            <RowActions r={r} trash={tab === "trash"} onStats={() => setStatsFor(r)} onEmail={() => setEmailFor(r)} onCopy={() => copyLink(r)} onRun={run} onPurge={() => setConfirm({ ids: [r.id], op: "purge" })} />
                           </div>
                         </div>
                       </td>
@@ -367,7 +369,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
                       การดู {formatCount(r.view_count)} · ไลก์ {formatCount(r.like_count)} · คอมเมนต์ {formatCount(r.comment_count)}
                     </p>
                     <div className="pl-5">
-                      <RowActions always r={r} trash={tab === "trash"} onStats={() => setStatsFor(r)} onCopy={() => copyLink(r)} onRun={run} onPurge={() => setConfirm({ ids: [r.id], op: "purge" })} />
+                      <RowActions always r={r} trash={tab === "trash"} onStats={() => setStatsFor(r)} onEmail={() => setEmailFor(r)} onCopy={() => copyLink(r)} onRun={run} onPurge={() => setConfirm({ ids: [r.id], op: "purge" })} />
                     </div>
                   </li>
                 );
@@ -379,6 +381,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
 
       {playlistFor && <AddToPlaylistDialog contentIds={playlistFor} onClose={() => setPlaylistFor(null)} />}
       {statsFor && <StatsDialog row={statsFor} onClose={() => setStatsFor(null)} />}
+      {emailFor && <SendEmailDialog type="content" id={emailFor.id} title={emailFor.title} onClose={() => setEmailFor(null)} />}
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(o) => !o && setConfirm(null)}
@@ -410,6 +413,7 @@ function RowActions({
   trash,
   always,
   onStats,
+  onEmail,
   onCopy,
   onRun,
   onPurge,
@@ -418,11 +422,14 @@ function RowActions({
   trash: boolean;
   always?: boolean;
   onStats: () => void;
+  onEmail: () => void;
   onCopy: () => void;
   onRun: (ids: string[], op: "restore") => void;
   onPurge: () => void;
 }) {
   const btn = "inline-flex size-8 items-center justify-center rounded-full text-text-2 hover:bg-hover hover:text-text [&_svg]:size-[17px]";
+  const live = r.type !== "short" && r.status === "published" && r.media_status === "ready" && !!r.published_at && new Date(r.published_at).getTime() <= Date.now();
+  const emailTitle = live ? "ส่งอีเมลแจ้งเตือน" : "ส่งอีเมลได้เมื่อเผยแพร่แล้วเท่านั้น";
   return (
     <div
       className={cn(
@@ -446,6 +453,16 @@ function RowActions({
           </Link>
           <button type="button" onClick={onStats} className={btn} aria-label="สถิติ" title="สถิติ">
             <ChartColumn strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={live ? onEmail : undefined}
+            aria-disabled={!live}
+            className={cn(btn, !live && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-text-2")}
+            aria-label="ส่งอีเมลแจ้งเตือน"
+            title={emailTitle}
+          >
+            <Mail strokeWidth={1.75} />
           </button>
           <button type="button" onClick={onCopy} className={btn} aria-label="คัดลอกลิงก์" title="คัดลอกลิงก์">
             <Link2 strokeWidth={1.75} />

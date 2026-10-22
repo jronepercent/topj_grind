@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
 import { Markdown } from "@/components/community/markdown";
 import { AiWriterPanel } from "./ai-writer-panel";
+import { emailDisabledReason, SendEmailButton } from "./send-email-button";
 import { saveArticleAction, signArticleImageAction } from "@/app/studio/community-actions";
 import { ACCEPT_IMAGES, prepareImage, putImage } from "@/lib/client/images";
 import { POST_LIMITS, readMinutes } from "@/lib/community";
@@ -129,6 +130,7 @@ export function ArticleEditor({ initial }: { initial?: StudioArticleFull }) {
   };
 
   const isPublished = status === "published" && !!initial && initial.status === "published";
+  const emailLive = !!initial && initial.status === "published" && !!initial.published_at && new Date(initial.published_at).getTime() <= Date.now();
 
   return (
     <div>
@@ -150,6 +152,7 @@ export function ArticleEditor({ initial }: { initial?: StudioArticleFull }) {
               </Link>
             </Button>
           )}
+          {id && <SendEmailButton type="article" id={id} title={title || initial?.title || ""} disabledReason={emailDisabledReason(emailLive)} />}
           <Button variant="secondary" onClick={() => save("draft")} disabled={!!saving || uploading}>
             {saving === "draft" && <Loader2 className="animate-spin" />}
             {isPublished ? "เปลี่ยนเป็นฉบับร่าง" : "บันทึกฉบับร่าง"}

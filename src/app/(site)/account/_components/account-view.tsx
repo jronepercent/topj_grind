@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ImageUp, Link2, LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { setAutoplayAction, setThemeAction, updateProfileAction } from "@/app/actions";
+import { setAutoplayAction, setEmailUpdatesAction, setThemeAction, updateProfileAction } from "@/app/actions";
 import { changePasswordAction, logoutAction } from "@/app/(auth)/auth-actions";
 import { Avatar, Field, inputClass, MemberBadge } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -46,12 +46,14 @@ function Card({ title, description, children, className }: { title: string; desc
 export function AccountView({
   viewer,
   theme,
+  emailUpdates,
   daysLeft,
   firstPaidAt,
   payments,
 }: {
   viewer: Viewer;
   theme: ThemePref;
+  emailUpdates: boolean;
   daysLeft: number | null;
   firstPaidAt: string | null;
   payments: PaymentRow[];
@@ -65,7 +67,7 @@ export function AccountView({
       <PasswordCard />
       <MembershipCard viewer={viewer} daysLeft={daysLeft} firstPaidAt={firstPaidAt} lastPayment={payments[0] ?? null} />
       <PaymentsCard payments={payments} />
-      <PreferencesCard initialTheme={theme} initialAutoplay={viewer.autoplay} />
+      <PreferencesCard initialTheme={theme} initialAutoplay={viewer.autoplay} initialEmailUpdates={emailUpdates} />
       <LogoutCard />
     </div>
   );
@@ -407,9 +409,18 @@ const THEMES = [
   { value: "system", label: "ตามระบบ", Icon: Monitor },
 ] as const;
 
-function PreferencesCard({ initialTheme, initialAutoplay }: { initialTheme: ThemePref; initialAutoplay: boolean }) {
+function PreferencesCard({
+  initialTheme,
+  initialAutoplay,
+  initialEmailUpdates,
+}: {
+  initialTheme: ThemePref;
+  initialAutoplay: boolean;
+  initialEmailUpdates: boolean;
+}) {
   const [theme, setTheme] = React.useState<ThemePref>(initialTheme);
   const [autoplay, setAutoplay] = React.useState(initialAutoplay);
+  const [emailUpdates, setEmailUpdates] = React.useState(initialEmailUpdates);
 
   const pickTheme = (t: ThemePref) => {
     setTheme(t);
@@ -422,6 +433,15 @@ function PreferencesCard({ initialTheme, initialAutoplay }: { initialTheme: Them
     const r = await setAutoplayAction(on);
     if (!r.ok) {
       setAutoplay(!on);
+      toast(r.error);
+    }
+  };
+
+  const toggleEmailUpdates = async (on: boolean) => {
+    setEmailUpdates(on);
+    const r = await setEmailUpdatesAction(on);
+    if (!r.ok) {
+      setEmailUpdates(!on);
       toast(r.error);
     }
   };
@@ -461,6 +481,14 @@ function PreferencesCard({ initialTheme, initialAutoplay }: { initialTheme: Them
             <span className="t-meta mt-0.5 block">เล่นคลิปถัดไปให้เองเมื่อคลิปปัจจุบันจบ</span>
           </span>
           <Switch checked={autoplay} onCheckedChange={toggleAutoplay} aria-label="เล่นอัตโนมัติ" />
+        </label>
+        <div className="h-px bg-border" />
+        <label className="flex cursor-pointer items-center justify-between gap-4">
+          <span>
+            <span className="block text-[15px] font-medium">รับอีเมลเมื่อมีคลิปหรือโพสต์ใหม่</span>
+            <span className="t-meta mt-0.5 block">ส่งไปที่อีเมลของบัญชีนี้เฉพาะเมื่อมีคอนเทนต์ใหม่ ปิดได้ทุกเมื่อ</span>
+          </span>
+          <Switch checked={emailUpdates} onCheckedChange={toggleEmailUpdates} aria-label="รับอีเมลเมื่อมีคลิปหรือโพสต์ใหม่" />
         </label>
       </div>
     </Card>

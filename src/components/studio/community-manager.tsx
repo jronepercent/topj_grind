@@ -2,12 +2,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, ExternalLink, Heart, ImageIcon, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
+import { Eye, EyeOff, ExternalLink, Heart, ImageIcon, Mail, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PostComposer } from "@/components/community/composer";
 import { Button } from "@/components/ui/button";
 import { Avatar, CreatorBadge, EmptyState } from "@/components/ui/misc";
 import { ConfirmDialog } from "./confirm";
+import { SendEmailDialog } from "./send-email-button";
 import { Card } from "./ui";
 import { deletePostAction, deletePostCommentAction, moderatePostAction, moderatePostCommentAction } from "@/app/community-actions";
 import { formatNumber, timeAgo } from "@/lib/format";
@@ -22,6 +23,7 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
   const [tab, setTab] = React.useState<Tab>("posts");
   const [delPost, setDelPost] = React.useState<StudioPostRow | null>(null);
   const [delComment, setDelComment] = React.useState<StudioCommentRow | null>(null);
+  const [emailPost, setEmailPost] = React.useState<StudioPostRow | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const act = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
@@ -131,6 +133,17 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
                       >
                         {p.is_hidden ? <Eye /> : <EyeOff />}
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="ส่งอีเมลแจ้งเตือน"
+                        aria-disabled={p.is_hidden}
+                        title={p.is_hidden ? "โพสต์ที่ซ่อนอยู่ส่งอีเมลไม่ได้" : "ส่งอีเมลแจ้งเตือน"}
+                        className={cn(p.is_hidden && "cursor-not-allowed opacity-40")}
+                        onClick={p.is_hidden ? undefined : () => setEmailPost(p)}
+                      >
+                        <Mail />
+                      </Button>
                       <Button variant="ghost" size="icon-sm" aria-label="ลบโพสต์" title="ลบโพสต์" className="text-danger" onClick={() => setDelPost(p)}>
                         <Trash2 />
                       </Button>
@@ -186,6 +199,7 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
         )}
       </div>
 
+      {emailPost && <SendEmailDialog type="post" id={emailPost.id} title={emailPost.body.slice(0, 80) || "(รูปอย่างเดียว)"} onClose={() => setEmailPost(null)} />}
       <ConfirmDialog
         open={!!delPost}
         onOpenChange={(o) => !o && setDelPost(null)}
