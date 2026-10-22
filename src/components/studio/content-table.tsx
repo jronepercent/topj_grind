@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArchiveRestore, ChartColumn, Eye, Globe, Link2, ListPlus, Lock, Mail, Pencil, Search, Trash, X } from "lucide-react";
+import { ArchiveRestore, ChartColumn, CircleCheck, CircleDashed, Eye, Globe, Link2, ListPlus, Lock, Mail, Pencil, Search, Trash, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from "@/components/ui/dropdown";
@@ -70,7 +70,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
   const allChecked = list.length > 0 && list.every((r) => selected.has(r.id));
   const toggleAll = () => setSelected(allChecked ? new Set() : new Set(list.map((r) => r.id)));
 
-  const run = async (ids: string[], op: "public" | "members" | "delete" | "restore" | "purge") => {
+  const run = async (ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") => {
     const before = rows;
     const now = new Date().toISOString();
     setRows((rs) =>
@@ -81,7 +81,13 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
               ? r
               : op === "public" || op === "members"
                 ? { ...r, visibility: op }
-                : op === "delete"
+                : op === "draft"
+                  ? { ...r, status: "draft" as const, published_at: null, scheduled_at: null }
+                  : op === "publish"
+                    ? r.status === "published" || r.media_status !== "ready"
+                      ? r
+                      : { ...r, status: "published" as const, published_at: now, scheduled_at: null }
+                    : op === "delete"
                   ? { ...r, deleted_at: now }
                   : { ...r, deleted_at: null },
           ),
@@ -107,6 +113,8 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
       });
     else if (op === "restore") toast(`กู้คืน ${n} รายการแล้ว`);
     else if (op === "purge") toast(`ลบถาวร ${n} รายการแล้ว`);
+    else if (op === "draft") toast(`เปลี่ยนเป็นฉบับร่าง ${n} รายการแล้ว`);
+    else if (op === "publish") toast(`เผยแพร่ ${n} รายการแล้ว (คลิปที่ยังประมวลผลไม่เสร็จจะเผยแพร่เองเมื่อพร้อม)`);
     else toast(op === "members" ? `ตั้งเป็นเฉพาะสมาชิก ${n} รายการแล้ว` : `ตั้งเป็นสาธารณะ ${n} รายการแล้ว`);
     router.refresh();
   };
@@ -226,6 +234,21 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
                   </DropdownItem>
                   <DropdownItem onSelect={() => run(sel, "members")}>
                     <Lock className="!text-member" /> เฉพาะสมาชิก
+                  </DropdownItem>
+                </DropdownContent>
+              </Dropdown>
+              <Dropdown>
+                <DropdownTrigger asChild>
+                  <Button variant="secondary" size="sm">
+                    <CircleCheck /> เปลี่ยนสถานะ
+                  </Button>
+                </DropdownTrigger>
+                <DropdownContent align="end">
+                  <DropdownItem onSelect={() => run(sel, "publish")}>
+                    <CircleCheck className="!text-success" /> เผยแพร่
+                  </DropdownItem>
+                  <DropdownItem onSelect={() => run(sel, "draft")}>
+                    <CircleDashed /> ฉบับร่าง
                   </DropdownItem>
                 </DropdownContent>
               </Dropdown>

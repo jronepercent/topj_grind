@@ -355,7 +355,7 @@ export async function saveContentAction(id: string, input: ContentInput) {
   });
 }
 
-export async function bulkContentAction(ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft") {
+export async function bulkContentAction(ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") {
   return admin(async (a) => {
     const list = uuids(ids);
     if (!list.length) return;
@@ -364,7 +364,22 @@ export async function bulkContentAction(ids: string[], op: "public" | "members" 
     if (op === "public" || op === "members") {
       must(await db.from("content").update({ visibility: op, updated_at: now }).in("id", list), "visibility");
     } else if (op === "draft") {
-      must(await db.from("content").update({ status: "draft", published_at: null, updated_at: now }).in("id", list), "draft");
+      must(
+        await db.from("content").update({ status: "draft", published_at: null, scheduled_at: null, publish_when_ready: false, updated_at: now }).in("id", list),
+        "draft",
+      );
+    } else if (op === "publish") {
+      // Same rules as the editor's "เผยแพร่ทันที": live now if the media is ready, otherwise as soon as processing finishes.
+      const rows = must(await db.from("content").select("*").in("id", list).is("deleted_at", null), "load") as ContentRow[];
+      for (const c of rows) {
+        if (c.status === "published") continue;
+        if (c.media_status !== "ready") {
+          await updateRow(c.id, { status: "draft", scheduled_at: null, publish_when_ready: true });
+          continue;
+        }
+        const next = await updateRow(c.id, publishNowPatch());
+        if (isLive(next)) await notifyNewContent(next);
+      }
     } else if (op === "delete") {
       must(await db.from("content").update({ deleted_at: now, updated_at: now }).in("id", list), "trash");
     } else if (op === "restore") {
