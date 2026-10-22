@@ -220,6 +220,16 @@ export function SignupForm({ next }: { next: string }) {
         <Submit pending={pending} pendingLabel="กำลังสร้างบัญชี…">
           สร้างบัญชี
         </Submit>
+        <p className="t-meta text-center">
+          การสร้างบัญชีถือว่าคุณยอมรับ{" "}
+          <Link href="/terms" className="underline underline-offset-4 hover:text-text">
+            เงื่อนไขการใช้งาน
+          </Link>{" "}
+          และ{" "}
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-text">
+            นโยบายความเป็นส่วนตัว
+          </Link>
+        </p>
       </form>
       <p className="t-meta mt-6 text-center">
         มีบัญชีอยู่แล้ว?{" "}

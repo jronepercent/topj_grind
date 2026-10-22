@@ -7,6 +7,7 @@ import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { Logo } from "@/components/ui/logo";
 import { useUI } from "@/lib/stores/player";
 import { cn } from "@/lib/utils";
+import { LEGAL_LINKS } from "@/lib/legal";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> };
 
@@ -61,7 +62,14 @@ function FullNav({ onNavigate }: { onNavigate?: () => void }) {
       {group(YOU)}
       <hr className="my-3 border-border" />
       {group(MORE)}
-      <p className="t-caption mt-6 px-3 text-text-2">© {new Date().getFullYear()} TOPJ_GRIND</p>
+      <p className="t-caption mt-6 flex flex-wrap gap-x-3 gap-y-1 px-3 text-text-2">
+        {LEGAL_LINKS.map((l) => (
+          <Link key={l.href} href={l.href} onClick={onNavigate} className="hover:text-text hover:underline">
+            {l.label}
+          </Link>
+        ))}
+      </p>
+      <p className="t-caption mt-3 px-3 text-text-2">© {new Date().getFullYear()} TOPJ_GRIND</p>
     </nav>
   );
 }

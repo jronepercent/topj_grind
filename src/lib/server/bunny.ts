@@ -29,14 +29,25 @@ export async function createBunnyUpload(title: string) {
   return { endpoint: "https://video.bunnycdn.com/tusupload", videoId: video.guid, libraryId, signature, expire };
 }
 
+/** With token authentication on, Bunny answers 403 to every unsigned file, images included, so there is no usable image URL. */
+export function bunnyImagesPublic() {
+  return !process.env.BUNNY_STREAM_TOKEN_KEY;
+}
+
+/** A file on this library's Stream CDN (the pull zone that token authentication guards). */
+export function isBunnyCdnUrl(url: string) {
+  const host = process.env.BUNNY_STREAM_CDN_HOST;
+  return !!host && url.startsWith(`https://${host}/`);
+}
+
 export function bunnyThumbnail(videoId: string) {
   const host = process.env.BUNNY_STREAM_CDN_HOST;
-  return host ? `https://${host}/${videoId}/thumbnail.jpg` : null;
+  return host && bunnyImagesPublic() ? `https://${host}/${videoId}/thumbnail.jpg` : null;
 }
 
 export function bunnyPreview(videoId: string) {
   const host = process.env.BUNNY_STREAM_CDN_HOST;
-  return host ? `https://${host}/${videoId}/preview.webp` : null;
+  return host && bunnyImagesPublic() ? `https://${host}/${videoId}/preview.webp` : null;
 }
 
 // Bunny Stream video status codes: 0 created, 1 uploaded, 2 processing, 3 transcoding, 4 finished, 5 error, 6 upload failed

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Check, ChevronDown, FileDown, Headphones, MessageCircle, SquarePlay } from "lucide-react";
@@ -13,7 +14,6 @@ import { PayButton } from "./_components/pay-button";
 export const metadata: Metadata = {
   title: "สมัครสมาชิก",
   description: "สมาชิก TOPJ_GRIND ดูได้ทุกคลิป ฟังพอดแคสต์ทุกตอน ดาวน์โหลดไฟล์ประกอบ และคอมเมนต์คุยกับ JR ได้โดยตรง",
-  robots: { index: false, follow: true },
 };
 
 function safePath(v: string | string[] | undefined) {
@@ -21,7 +21,8 @@ function safePath(v: string | string[] | undefined) {
   return s && s.startsWith("/") && !s.startsWith("//") && !s.startsWith("/\\") ? s : undefined;
 }
 
-const FAQ = [
+/** `line` is the channel's LINE OA link (Studio → settings → socials), linked from the last answer when set. */
+const faq = (line: string | null): { q: string; a: ReactNode }[] => [
   {
     q: "ยกเลิกยังไง?",
     a: "ถ้าจ่ายด้วยบัตร ระบบจะต่ออายุให้อัตโนมัติทุกรอบ และยกเลิกได้ทุกเมื่อก่อนรอบถัดไป สมาชิกยังใช้งานได้จนครบรอบที่จ่ายไปแล้ว ถ้าจ่ายด้วยพร้อมเพย์ ไม่มีการตัดเงินอัตโนมัติ สมาชิกจะหมดอายุเองเมื่อครบรอบ",
@@ -36,7 +37,30 @@ const FAQ = [
   },
   {
     q: "จ่ายแล้วดูได้เลยไหม?",
-    a: "ได้ทันทีหลังระบบยืนยันการชำระเงิน ปกติใช้เวลาไม่ถึง 1 นาที ถ้านานกว่านั้นทักเราทาง LINE OA พร้อมหลักฐานการชำระเงินได้เลย",
+    a: (
+      <>
+        ได้ทันทีหลังระบบยืนยันการชำระเงิน ปกติใช้เวลาไม่ถึง 1 นาที ถ้านานกว่านั้นทักเราทาง{" "}
+        {line ? (
+          <a href={line} target="_blank" rel="noopener noreferrer" className="font-medium text-text underline underline-offset-4">
+            LINE OA
+          </a>
+        ) : (
+          "LINE OA"
+        )}{" "}
+        พร้อมหลักฐานการชำระเงินได้เลย
+      </>
+    ),
+  },
+  {
+    q: "ขอเงินคืนได้ไหม?",
+    a: (
+      <>
+        ดูเงื่อนไขทั้งหมดได้ที่{" "}
+        <Link href="/refund" className="font-medium text-text underline underline-offset-4">
+          นโยบายการคืนเงิน
+        </Link>
+      </>
+    ),
   },
 ];
 
@@ -196,7 +220,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           คำถามที่พบบ่อย
         </h2>
         <div className="mt-8 divide-y divide-border border-y border-border">
-          {FAQ.map((f) => (
+          {faq(s.socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null).map((f) => (
             <details key={f.q} className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-5 text-[16px] font-medium [&::-webkit-details-marker]:hidden">
                 {f.q}

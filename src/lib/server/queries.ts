@@ -3,6 +3,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { adminDb, must } from "@/lib/supabase/clients";
 import { isActiveUntil } from "./auth";
+import { bunnyImagesPublic, isBunnyCdnUrl } from "./bunny";
 import { parseChapters } from "@/lib/richtext";
 import { resolveHeroSlide } from "@/lib/hero";
 import type {
@@ -114,7 +115,9 @@ export function liveAt(c: Pick<ContentRow, "status" | "scheduled_at" | "publishe
 export function toPublic(c: ContentRow | Content): Content {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { demo_src, audio_path, bunny_video_id, captions_vtt, publish_when_ready, ...rest } = c as ContentRow;
-  return { ...rest, published_at: liveAt(c), has_captions: (c as Content).has_captions ?? !!captions_vtt };
+  // Rows synced before token auth was turned on still hold an unsigned Bunny preview, which now 403s.
+  const preview_url = rest.preview_url && !bunnyImagesPublic() && isBunnyCdnUrl(rest.preview_url) ? null : rest.preview_url;
+  return { ...rest, preview_url, published_at: liveAt(c), has_captions: (c as Content).has_captions ?? !!captions_vtt };
 }
 
 /**

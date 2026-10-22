@@ -5,6 +5,7 @@ import { listContent, playlistsWithMeta } from "@/lib/server/queries";
 import { contentHref } from "@/lib/format";
 import { articleSitemap } from "@/lib/server/community";
 import { shopSitemap } from "@/lib/server/shop";
+import { LEGAL_LINKS } from "@/lib/legal";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
 
@@ -21,6 +22,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE}/about`, changeFrequency: "monthly" },
     { url: `${SITE}/membership`, changeFrequency: "monthly" },
     { url: `${SITE}/shop`, changeFrequency: "daily" },
+    ...LEGAL_LINKS.map((l) => ({ url: `${SITE}${l.href}`, changeFrequency: "yearly" as const, priority: 0.2 })),
     ...content.map((c) => ({ url: `${SITE}${contentHref(c)}`, lastModified: c.updated_at })),
     ...products.map((p) => ({ url: `${SITE}/shop/${p.id}`, lastModified: p.updated_at })),
     ...articles.map((a) => ({ url: `${SITE}/community/articles/${a.id}`, lastModified: a.updated_at })),

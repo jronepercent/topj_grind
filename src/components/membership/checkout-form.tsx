@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CreditCard, FlaskConical, Lock, Mail, QrCode } from "lucide-react";
 import { startCheckoutAction } from "@/app/(site)/membership/checkout/actions";
@@ -242,6 +243,16 @@ export function CheckoutForm({
         <p className="t-meta mt-4 flex items-start justify-center gap-1.5 text-center">
           <Lock className="mt-px size-3.5 shrink-0" strokeWidth={2} aria-hidden />
           ชำระเงินผ่านระบบที่ปลอดภัย ข้อมูลบัตรไม่ผ่านเซิร์ฟเวอร์ของเรา
+        </p>
+        <p className="t-meta mt-2 text-center">
+          การชำระเงินถือว่าคุณยอมรับ{" "}
+          <Link href="/terms" className="underline underline-offset-4 hover:text-text">
+            เงื่อนไขการใช้งาน
+          </Link>{" "}
+          และ{" "}
+          <Link href="/refund" className="underline underline-offset-4 hover:text-text">
+            นโยบายการคืนเงิน
+          </Link>
         </p>
 
         {mode === "demo" && demoEmail && (
