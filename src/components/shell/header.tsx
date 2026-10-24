@@ -31,9 +31,10 @@ import { SearchBox } from "./search-box";
 import { useUI } from "@/lib/stores/player";
 import { markAllReadAction, notificationsAction, setThemeAction } from "@/app/actions";
 import { logoutAction } from "@/app/(auth)/auth-actions";
-import { thaiDate, timeAgo } from "@/lib/format";
+import { thaiDate } from "@/lib/format";
 import type { Notification, ThemePref } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export function Header({ unread }: { unread: number }) {
   const { viewer } = useViewer();
@@ -189,7 +190,7 @@ function NotificationBell({ initialUnread }: { initialUnread: number }) {
                     <span className="line-clamp-2 block text-[14px] leading-5">
                       <span className="font-medium">{n.title}</span> · {n.body}
                     </span>
-                    <span className="t-caption mt-1 block text-text-2">{timeAgo(n.created_at)}</span>
+                    <span className="t-caption mt-1 block text-text-2"><TimeAgo iso={n.created_at} /></span>
                   </span>
                   {n.image_url && (
                     <Image src={n.image_url} alt="" width={86} height={48} className="h-12 w-[86px] shrink-0 rounded-[8px] object-cover" />

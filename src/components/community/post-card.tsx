@@ -9,12 +9,12 @@ import { ConfirmDialog } from "@/components/studio/confirm";
 import { Avatar, CreatorBadge, MemberBadge } from "@/components/ui/misc";
 import { Dropdown, DropdownContent, DropdownItem, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { ImageCarousel } from "./image-carousel";
+import { isTap, touchStart } from "./tap";
 import { deletePostAction, moderatePostAction, togglePostLikeAction } from "@/app/community-actions";
 import type { PostView } from "@/lib/community";
-import { formatCount, timeAgo } from "@/lib/format";
+import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-const LONG = 180;
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export function PostCard({
   post,
@@ -37,10 +37,12 @@ export function PostCard({
   const [pop, setPop] = React.useState(false);
   const [burst, setBurst] = React.useState(0);
   const lastTap = React.useRef(0);
+  const touch = React.useRef<{ x: number; y: number; t: number } | null>(null);
   const busy = React.useRef(false);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const [long, setLong] = React.useState(false);
   const mine = viewer?.id === post.author.id;
   const admin = !!viewer?.is_admin;
-  const long = post.body.length > LONG || post.body.split("\n").length > 3;
   const href = `/community/posts/${post.id}`;
   const name = post.author.is_admin ? settings.channel_name || post.author.display_name : post.author.display_name;
 
@@ -51,13 +53,32 @@ export function PostCard({
     const prev = { liked_by_me: post.liked_by_me, like_count: post.like_count };
     onChange?.({ liked_by_me: next, like_count: Math.max(0, post.like_count + (next ? 1 : -1)) });
     if (next) setPop(true);
-    const r = await togglePostLikeAction(post.id, next);
-    busy.current = false;
-    if (!r.ok) {
+    try {
+      const r = await togglePostLikeAction(post.id, next);
+      if (!r.ok) {
+        onChange?.(prev);
+        toast(r.error);
+      } else onChange?.({ liked_by_me: r.data.liked, like_count: r.data.like_count });
+    } catch {
       onChange?.(prev);
-      toast(r.error);
-    } else onChange?.({ liked_by_me: r.data.liked, like_count: r.data.like_count });
+      toast("เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง");
+    } finally {
+      busy.current = false;
+    }
   };
+
+  // "ดูเพิ่มเติม" only when the 4-line clamp actually cuts the text.
+  // Re-checked on resize (rotation, window width) since that changes where lines wrap.
+  React.useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    const check = () => setLong(el.scrollHeight > el.clientHeight + 2);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [post.body, expanded]);
 
   // Double-click / double-tap anywhere on the card likes it (never unlikes), like Instagram.
   // Buttons, links and menus keep their own clicks.
@@ -89,8 +110,14 @@ export function PostCard({
         window.getSelection()?.removeAllRanges();
         likeFromCard();
       }}
+      onTouchStart={(e) => {
+        touch.current = touchStart(e);
+      }}
       onTouchEnd={(e) => {
-        if (!onCard(e.target)) return;
+        if (!onCard(e.target) || !isTap(touch.current, e)) {
+          lastTap.current = 0;
+          return;
+        }
         const now = Date.now();
         if (now - lastTap.current < 300) {
           lastTap.current = 0;
@@ -103,13 +130,13 @@ export function PostCard({
         <Avatar src={post.author.avatar_url} name={post.author.display_name} size={40} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="truncate text-[14px] font-semibold">{name}</span>
+            <span className="min-w-0 max-w-full truncate text-[14px] font-semibold">{name}</span>
             {post.author.is_admin && <CreatorBadge />}
             {post.author.is_member && <MemberBadge />}
           </div>
           <p className="t-caption flex items-center gap-1.5 text-text-2">
             <Link href={href} className="hover:underline">
-              {timeAgo(post.published_at)}
+              <TimeAgo iso={post.published_at} />
             </Link>
             {post.is_pinned && (
               <span className="inline-flex items-center gap-1 font-medium">
@@ -160,7 +187,7 @@ export function PostCard({
 
       {post.body && (
         <div className="px-4 pb-3 text-[15px] leading-[24px]">
-          <div className={cn(!expanded && long && "line-clamp-4")}>
+          <div ref={bodyRef} className={cn(!expanded && "line-clamp-4")}>
             <RichText text={post.body} />
           </div>
           {long && !expanded && (

@@ -3,6 +3,7 @@ import * as React from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isTap, touchStart } from "./tap";
 
 /**
  * Instagram-style gallery: CSS scroll-snap (swipe on touch), dots, arrows on desktop.
@@ -13,6 +14,7 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
   const [index, setIndex] = React.useState(0);
   const [burst, setBurst] = React.useState(0);
   const lastTap = React.useRef(0);
+  const touch = React.useRef<{ x: number; y: number; t: number } | null>(null);
   const many = images.length > 1;
   // The frame takes the first image's own shape (never cropped). Very tall images stop at 4:5 like
   // Instagram and get side bars instead; later images keep the same frame and are fitted inside it.
@@ -45,7 +47,11 @@ export function ImageCarousel({ images, onDoubleTap, priority }: { images: strin
         ref={scroller}
         onScroll={onScroll}
         onDoubleClick={like}
-        onTouchEnd={() => {
+        onTouchStart={(e) => {
+          touch.current = touchStart(e);
+        }}
+        onTouchEnd={(e) => {
+          if (!isTap(touch.current, e)) return void (lastTap.current = 0);
           const now = Date.now();
           if (now - lastTap.current < 300) like();
           lastTap.current = now;

@@ -18,14 +18,20 @@ export function CommunityFeed({ initial }: { initial: FeedPage }) {
   const [cursor, setCursor] = React.useState(initial.cursor);
   const [hasMore, setHasMore] = React.useState(initial.hasMore);
   const [loading, setLoading] = React.useState(false);
+  // After a failed page, stop auto-loading (the sentinel is still in view and would retry in a loop).
+  const [failed, setFailed] = React.useState(false);
   const sentinel = React.useRef<HTMLDivElement>(null);
 
   const more = React.useCallback(async () => {
     if (loading || !hasMore) return;
     setLoading(true);
-    const r = await loadFeedAction(cursor);
+    const r = await loadFeedAction(cursor).catch(() => ({ ok: false as const, error: "เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง" }));
     setLoading(false);
-    if (!r.ok) return toast(r.error);
+    if (!r.ok) {
+      setFailed(true);
+      return toast(r.error);
+    }
+    setFailed(false);
     setItems((xs) => [...xs, ...r.data.items.filter((p) => !xs.some((x) => x.id === p.id))]);
     setCursor(r.data.cursor);
     setHasMore(r.data.hasMore);
@@ -33,11 +39,11 @@ export function CommunityFeed({ initial }: { initial: FeedPage }) {
 
   React.useEffect(() => {
     const el = sentinel.current;
-    if (!el || !hasMore) return;
+    if (!el || !hasMore || failed) return;
     const io = new IntersectionObserver(([e]) => e.isIntersecting && void more(), { rootMargin: "600px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [hasMore, more]);
+  }, [hasMore, more, failed]);
 
   const patch = (id: string, p: Partial<PostView> | null) =>
     setItems((xs) => (p === null ? xs.filter((x) => x.id !== id) : xs.map((x) => (x.id === id ? { ...x, ...p } : x))));

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
 import { getPost, listPostComments } from "@/lib/server/community";
 import { PostDetail } from "@/components/community/post-detail";
@@ -12,6 +12,8 @@ export const metadata: Metadata = { title: "โพสต์ในชุมชน
 export default async function PostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const viewer = await getViewer();
+  // Shared links opened while signed out (LINE, copied link): sign in, then land back on this post.
+  if (!viewer) redirect(`/login?next=${encodeURIComponent(`/community/posts/${id}`)}`);
   const post = await getPost(id, viewer);
   if (!post) notFound();
   const comments = await listPostComments(post.id, 0);

@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Avatar, EmptyState, inputClass, MemberBadge } from "@/components/ui/misc";
 import { banUserAction, deleteCommentAction, moderateCommentAction } from "@/app/actions";
 import { replyAsCreatorAction } from "@/app/studio/actions";
-import { contentHref, formatNumber, timeAgo } from "@/lib/format";
+import { contentHref, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { StudioComment } from "./types";
 import { ConfirmDialog } from "./confirm";
 import { StudioThumb } from "./ui";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 type Tab = "all" | "unanswered" | "reported";
 
@@ -139,7 +140,7 @@ export function CommentsInbox({ comments: initial, initialTab }: { comments: Stu
                     <span className="text-[14px] font-semibold">{c.author.display_name}</span>
                     {c.author.is_member && <MemberBadge />}
                     {c.author.is_banned && <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">ถูกแบน</span>}
-                    <span className="t-caption text-text-2">{timeAgo(c.created_at)}</span>
+                    <span className="t-caption text-text-2"><TimeAgo iso={c.created_at} /></span>
                     {c.is_pinned && (
                       <span className="t-caption inline-flex items-center gap-1 text-text-2">
                         <Pin className="size-3" aria-hidden /> ปักหมุด

@@ -68,6 +68,18 @@ export async function signupAction(_: AuthState, form: FormData): Promise<AuthSt
   return { info: `ส่งลิงก์ยืนยันไปที่ ${email} แล้ว เปิดอีเมลแล้วกดลิงก์เพื่อเริ่มใช้งาน` };
 }
 
+/** Starts Google sign-in: Supabase sends the visitor to Google, then back to /auth/callback with a code. */
+export async function googleSignInAction(form: FormData) {
+  const next = safeNext(form.get("next"));
+  const supabase = await userDb();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${await siteOrigin()}/auth/callback?next=${encodeURIComponent(next)}` },
+  });
+  if (error || !data.url) redirect(`/login?error=google${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}`);
+  redirect(data.url);
+}
+
 export async function magicLinkAction(_: AuthState, form: FormData): Promise<AuthState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   if (!emailOk(email)) return { error: "รูปแบบอีเมลไม่ถูกต้อง" };

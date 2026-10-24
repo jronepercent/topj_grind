@@ -17,8 +17,9 @@ import {
   postCommentOnPostAction,
 } from "@/app/community-actions";
 import { POST_LIMITS, type PostCommentView } from "@/lib/community";
-import { formatNumber, timeAgo } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 const MAX = POST_LIMITS.comment;
 
@@ -42,7 +43,7 @@ export function PostComments({ postId, initial, count, lockedText = "คอม�
 
   const loadMore = async () => {
     setLoading(true);
-    const r = await loadPostCommentsAction(postId, items.length);
+    const r = await loadPostCommentsAction(postId, items.length).catch(() => ({ ok: false as const, error: "เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง" }));
     setLoading(false);
     if (!r.ok) return toast(r.error);
     setItems((xs) => [...xs, ...r.data.items.filter((c) => !xs.some((x) => x.id === c.id))]);
@@ -178,8 +179,14 @@ function Box({
     const v = value.trim();
     if (!v || v.length > MAX || busy) return;
     setBusy(true);
-    const ok = await onSubmit(v);
-    setBusy(false);
+    let ok = false;
+    try {
+      ok = await onSubmit(v);
+    } catch {
+      toast("เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง");
+    } finally {
+      setBusy(false);
+    }
     if (ok) {
       setValue("");
       setActive(false);
@@ -197,7 +204,10 @@ function Box({
           rows={1}
           maxLength={MAX + 50}
           onFocus={() => setActive(true)}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setActive(true); // still focused after Ctrl+Enter, so onFocus won't bring the buttons back
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
             if (e.key === "Escape") cancel();
@@ -258,7 +268,7 @@ function CommentItem({
           {c.author.is_admin && <CreatorBadge />}
           {c.author.is_member && <MemberBadge />}
           <span className="t-caption text-text-2">
-            {timeAgo(c.created_at)}
+            <TimeAgo iso={c.created_at} />
             {c.edited_at && " (แก้ไขแล้ว)"}
           </span>
         </div>

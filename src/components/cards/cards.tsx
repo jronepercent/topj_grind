@@ -7,10 +7,11 @@ import { Check, Headphones, Lock, Pause, Play } from "lucide-react";
 import { useViewer } from "@/components/providers";
 import { MemberBadge } from "@/components/ui/misc";
 import { ContentMenu } from "./content-menu";
-import { contentHref, formatCount, formatDuration, formatLongDuration, showViews, thaiDate, timeAgo } from "@/lib/format";
+import { contentHref, formatCount, formatDuration, formatLongDuration, showViews, thaiDate } from "@/lib/format";
 import type { Content, PlaylistWithMeta } from "@/lib/types";
 import { usePlayer, type PlayerItem } from "@/lib/stores/player";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export type ProgressMap = Record<string, { position_sec: number; completed: boolean }>;
 
@@ -126,7 +127,7 @@ export function VideoCard({ c, progress, priority, sizes }: { c: Content; progre
           </Link>
           <p className="t-meta tnum mt-1">
             {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
-            {timeAgo(c.published_at)}
+            <TimeAgo iso={c.published_at} />
           </p>
         </div>
         <ContentMenu content={c} className="-mr-1 self-start" />
@@ -177,7 +178,7 @@ export function RowCard({
         <p className="t-meta tnum mt-1">
           {c.type === "podcast" ? "พอดแคสต์ · " : ""}
           {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
-          {timeAgo(c.published_at)}
+          <TimeAgo iso={c.published_at} />
         </p>
         {size === "lg" && <p className="t-meta mt-2 line-clamp-2">{c.description.split("\n")[0]}</p>}
         {extra}

@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, EmptyState, Field, inputClass } from "@/components/ui/misc";
 import { extendMemberAction, resolvePaymentErrorAction, revokeMemberAction } from "@/app/studio/actions";
-import { daysUntil, formatNumber, thaiDate, thaiDateTime, timeAgo } from "@/lib/format";
+import { daysUntil, formatNumber, thaiDate, thaiDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { MEMBER_STATUS_LABEL, METHOD_LABEL, type MemberRow, type MemberStatus } from "./types";
 import { Card, CardHeader, Dot, selectClass, selectStyle, StatCard } from "./ui";
 import { isoToBkkInput } from "./editor-parts";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export interface AuditEntry {
   id: string;
@@ -204,7 +205,7 @@ export function MembersManager({
                         <StatusPill s={m.status} />
                       </td>
                       <td className="px-3 py-3 text-text-2">{m.last_method ? METHOD_LABEL[m.last_method] : "—"}</td>
-                      <td className="tnum px-3 py-3 text-text-2">{m.last_watch ? timeAgo(m.last_watch) : "—"}</td>
+                      <td className="tnum px-3 py-3 text-text-2">{m.last_watch ? <TimeAgo iso={m.last_watch} /> : "—"}</td>
                       <td className="px-4 py-3">
                         <RowButtons m={m} onOpen={setDialog} />
                       </td>
@@ -241,7 +242,7 @@ export function MembersManager({
                     </div>
                     <div>
                       <dt className="t-caption text-text-2">ดูล่าสุด</dt>
-                      <dd>{m.last_watch ? timeAgo(m.last_watch) : "—"}</dd>
+                      <dd>{m.last_watch ? <TimeAgo iso={m.last_watch} /> : "—"}</dd>
                     </div>
                   </dl>
                   <div className="mt-3 border-t border-border pt-3">
@@ -262,7 +263,7 @@ export function MembersManager({
           <ul className="px-5 pb-4 pt-2">
             {audit.map((a) => (
               <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border py-2.5 text-[13px] last:border-0">
-                <span className="tnum w-28 shrink-0 text-text-2">{timeAgo(a.created_at)}</span>
+                <span className="tnum w-28 shrink-0 text-text-2"><TimeAgo iso={a.created_at} /></span>
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
                   {a.target && <span className="text-text-2"> · {a.target}</span>}

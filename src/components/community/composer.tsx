@@ -208,7 +208,7 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
               ))}
             </ul>
           )}
-          <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <input
               ref={fileRef}
               type="file"

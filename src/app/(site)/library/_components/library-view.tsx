@@ -14,11 +14,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useViewer } from "@/components/providers";
 import { ProductCard } from "@/components/shop/product-card";
-import { contentHref, formatCount, formatDuration, thaiDate, timeAgo, TYPE_LABEL, showViews } from "@/lib/format";
+import { contentHref, formatCount, formatDuration, thaiDate, TYPE_LABEL, showViews } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
 import { PRODUCT_TYPE_LABEL, deliveryInfo, formatBaht, productHref, type PurchaseView } from "@/lib/shop";
 import type { Content, PlaylistWithMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export type LibraryTab = "overview" | "history" | "later" | "liked" | "courses" | "purchases";
 export interface HistoryGroup {
@@ -448,7 +449,7 @@ function LibRow({ c, progress, onRemove, removeLabel }: { c: Content; progress: 
         </Link>
         <p className="t-meta tnum mt-1">
           {showViews(c.view_count) && `การดู ${formatCount(c.view_count)} ครั้ง · `}
-          {timeAgo(c.published_at)}
+          <TimeAgo iso={c.published_at} />
         </p>
         <p className="t-meta mt-2 hidden sm:line-clamp-2">{c.description.split("\n")[0]}</p>
       </div>

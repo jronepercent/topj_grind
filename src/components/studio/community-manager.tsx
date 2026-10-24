@@ -11,9 +11,10 @@ import { ConfirmDialog } from "./confirm";
 import { SendEmailDialog } from "./send-email-button";
 import { Card } from "./ui";
 import { deletePostAction, deletePostCommentAction, moderatePostAction, moderatePostCommentAction } from "@/app/community-actions";
-import { formatNumber, timeAgo } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import type { StudioCommentRow, StudioPostRow } from "@/lib/server/community";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 type Tab = "posts" | "comments";
 
@@ -89,7 +90,7 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
                         <Avatar src={p.author.avatar_url} name={p.author.display_name} size={20} />
                         <span className="font-semibold">{p.author.display_name}</span>
                         {p.author.is_admin && <CreatorBadge />}
-                        <span className="t-caption text-text-2">{timeAgo(p.published_at)}</span>
+                        <span className="t-caption text-text-2"><TimeAgo iso={p.published_at} /></span>
                         {p.is_pinned && (
                           <span className="inline-flex items-center gap-1 text-[12px] font-medium">
                             <Pin className="size-3" /> ปักหมุด
@@ -165,7 +166,7 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
                     <p className="flex flex-wrap items-center gap-x-2 text-[13px]">
                       <span className="font-semibold">{c.author.display_name}</span>
                       {c.author.is_admin && <CreatorBadge />}
-                      <span className="t-caption text-text-2">{timeAgo(c.created_at)}</span>
+                      <span className="t-caption text-text-2"><TimeAgo iso={c.created_at} /></span>
                       {c.is_hidden && <span className="text-[12px] text-text-2">ซ่อนอยู่</span>}
                     </p>
                     <p className="mt-1 text-[14px] leading-[21px] [overflow-wrap:anywhere]">{c.body}</p>

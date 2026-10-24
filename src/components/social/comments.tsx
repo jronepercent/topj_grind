@@ -10,6 +10,7 @@ import {
   ListFilter,
   Pencil,
   Pin,
+  UserRound,
   ThumbsUp,
   Trash2,
   Ban,
@@ -33,9 +34,10 @@ import {
   postCommentAction,
   reportCommentAction,
 } from "@/app/actions";
-import { formatCount, formatNumber, timeAgo } from "@/lib/format";
+import { formatCount, formatNumber } from "@/lib/format";
 import type { CommentView, Visibility } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 const MAX = 1000;
 
@@ -185,8 +187,10 @@ function ComposerGate({ visibility }: { visibility: Visibility }) {
   if (!viewer)
     return (
       <button onClick={() => requireAuth("เข้าสู่ระบบเพื่อแสดงความคิดเห็น")} className="flex w-full items-center gap-3 text-left">
-        <Avatar name="?" size={40} />
-        <span className="flex-1 border-b border-border pb-2 text-[14px] text-text-2">เพิ่มความคิดเห็น…</span>
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-text-2" aria-hidden>
+          <UserRound className="size-5" strokeWidth={1.75} />
+        </span>
+        <span className="flex-1 border-b border-border pb-2 text-[14px] text-text-2">เข้าสู่ระบบเพื่อแสดงความคิดเห็น…</span>
       </button>
     );
   if (visibility === "members")
@@ -359,7 +363,7 @@ function CommentItem({
           {c.author.is_creator && <CreatorBadge />}
           {c.author.is_member && <MemberBadge />}
           <span className="t-caption text-text-2">
-            {temp ? "กำลังโพสต์…" : timeAgo(c.created_at)}
+            {temp ? "กำลังโพสต์…" : <TimeAgo iso={c.created_at} />}
             {c.edited_at && " (แก้ไขแล้ว)"}
             {c.is_hidden && " · ซ่อนอยู่"}
           </span>
