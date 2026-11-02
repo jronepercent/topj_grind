@@ -15,6 +15,9 @@ export default function imageLoader({ src, width, quality }: ImageLoaderProps) {
   if (i === -1 || !src.includes(".supabase.co/")) return src;
   const url = new URL(src.slice(0, i) + "/storage/v1/render/image/public/" + src.slice(i + PUBLIC_OBJECT.length));
   url.searchParams.set("width", String(Math.min(width, MAX_WIDTH)));
+  // The default "cover" keeps the original height and crops the sides (1672×941 at width 640 → 640×941),
+  // which made every cover look zoomed in. "contain" scales the height too and never upscales.
+  url.searchParams.set("resize", "contain");
   url.searchParams.set("quality", String(quality ?? 75));
   return url.toString();
 }
