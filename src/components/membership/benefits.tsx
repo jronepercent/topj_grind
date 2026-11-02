@@ -3,8 +3,14 @@ import { listContent } from "@/lib/server/queries";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** Icons for the member benefits, in the order of the default list (Studio → settings can reorder/replace the text). */
-export const BENEFIT_ICONS = [SquarePlay, ChartColumn, Headphones, MessageCircle];
+/** Icon by what the benefit talks about, so reordering or rewording it in Studio → settings keeps a fitting icon. */
+const BENEFIT_ICONS: [RegExp, typeof Check][] = [
+  [/พอดแคสต์|ฟัง/, Headphones],
+  [/หลังบ้าน|ตัวเลข|ระบบ/, ChartColumn],
+  [/คอมเมนต์|คุย|ถาม|คอมมูนิตี้|ชุมชน/, MessageCircle],
+  [/คลิป|วิดีโอ|ดู/, SquarePlay],
+];
+const benefitIcon = (text: string) => BENEFIT_ICONS.find(([re]) => re.test(text))?.[1] ?? Check;
 
 /** What the members area holds right now, from the cached catalogue. Zero counts are left out. */
 async function memberStats() {
@@ -36,10 +42,11 @@ export async function MemberStatChips({ className }: { className?: string }) {
 
 /** The benefits as icon rows. `compact` is the slimmer variant used inside the home page pitch band. */
 export function BenefitList({ benefits, compact, className }: { benefits: string[]; compact?: boolean; className?: string }) {
+  if (!benefits.length) return null;
   return (
     <ul className={cn("grid gap-3", compact ? "gap-2.5 sm:grid-cols-2 sm:gap-3" : "sm:grid-cols-2", className)}>
-      {benefits.map((b, i) => {
-        const Icon = BENEFIT_ICONS[i] ?? Check;
+      {benefits.map((b) => {
+        const Icon = benefitIcon(b);
         return (
           <li
             key={b}

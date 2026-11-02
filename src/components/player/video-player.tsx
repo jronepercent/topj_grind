@@ -470,6 +470,20 @@ function SettingsMenu({ rate, onClose }: { rate: number; onClose: () => void }) 
   const qualities = useVideoQualityOptions({ auto: "อัตโนมัติ", sort: "descending" });
   const [tab, setTab] = React.useState<"root" | "speed" | "quality">("root");
   const ref = React.useRef<HTMLDivElement>(null);
+  // The menu opens upward inside a player that clips overflow. On a phone the player is ~210px tall,
+  // so a long list (6 qualities, 7 speeds) lost its top rows (อัตโนมัติ, 1080p). Cap it to the room above and scroll.
+  // Re-measured when the player resizes too (fullscreen, theater, rotation), so the cap never goes stale.
+  const [maxH, setMaxH] = React.useState<number>();
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    const box = el?.closest<HTMLElement>(".group\\/player");
+    if (!el || !box) return;
+    const measure = () => setMaxH(Math.max(96, el.getBoundingClientRect().bottom - box.getBoundingClientRect().top - 8));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [tab]);
   React.useEffect(() => {
     const onDown = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
     const t = setTimeout(() => window.addEventListener("pointerdown", onDown), 0);
@@ -479,9 +493,14 @@ function SettingsMenu({ rate, onClose }: { rate: number; onClose: () => void }) 
     };
   }, [onClose]);
   const selectedQuality = qualities.find((q) => q.selected);
-  const row = "flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left text-[14px] hover:bg-white/10";
+  const autoOn = qualities.some((q) => q.value === "auto" && q.selected);
+  const row = "flex w-full shrink-0 items-center gap-3 rounded-[10px] px-3 py-1.5 text-left text-[14px] hover:bg-white/10 sm:py-2";
   return (
-    <div ref={ref} className="tg-drop absolute bottom-12 right-0 z-10 w-60 rounded-[14px] border border-white/10 bg-[#1c1c1f]/95 p-1.5 shadow-2xl backdrop-blur-xl">
+    <div
+      ref={ref}
+      style={{ maxHeight: maxH }}
+      className="tg-drop absolute bottom-12 right-0 z-10 w-60 overflow-y-auto overscroll-contain rounded-[14px] border border-white/10 bg-[#1c1c1f]/95 p-1.5 shadow-2xl backdrop-blur-xl"
+    >
       {tab === "root" && (
         <>
           <button className={row} onClick={() => setTab("speed")}>
@@ -519,7 +538,8 @@ function SettingsMenu({ rate, onClose }: { rate: number; onClose: () => void }) 
               onClose();
             }}
           >
-            <Check className={cn("size-4", q.selected ? "opacity-100" : "opacity-0")} />
+            {/* In auto mode Vidstack also marks the rendition it is playing; tick only "อัตโนมัติ" then. */}
+            <Check className={cn("size-4", q.selected && (q.value === "auto" || !autoOn) ? "opacity-100" : "opacity-0")} />
             {q.label}
             {q.bitrateText && <span className="ml-auto text-[12px] text-white/50">{q.bitrateText}</span>}
           </button>

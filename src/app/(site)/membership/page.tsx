@@ -148,14 +148,16 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
         )}
       </section>
 
-      {/* ── Benefits ── */}
-      <section className="mx-auto max-w-[980px]" aria-labelledby="benefits-h">
-        <h2 id="benefits-h" className="t-h1 text-center">
-          สมาชิกได้อะไรบ้าง
-        </h2>
-        <MemberStatChips className="mt-4 justify-center" />
-        <BenefitList benefits={s.paywall_benefits} className="mt-8" />
-      </section>
+      {/* ── Benefits (Studio can save an empty list; then there is nothing to head) ── */}
+      {s.paywall_benefits.length > 0 && (
+        <section className="mx-auto max-w-[980px]" aria-labelledby="benefits-h">
+          <h2 id="benefits-h" className="t-h1 text-center">
+            สมาชิกได้อะไรบ้าง
+          </h2>
+          <MemberStatChips className="mt-4 justify-center" />
+          <BenefitList benefits={s.paywall_benefits} className="mt-8" />
+        </section>
+      )}
 
       {/* ── 3 easy steps (nothing to explain once someone is a member) ── */}
       {!isMember && (
