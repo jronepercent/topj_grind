@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, FileUp, ImagePlus, Loader2, Package, Trash2, X } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, FileUp, ImagePlus, Loader2, Package, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
@@ -69,6 +69,11 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
     initial?.file_path && initial.file_name ? { path: initial.file_path, name: initial.file_name, size: initial.file_size } : null,
   );
   const [fileJob, setFileJob] = React.useState<{ name: string; progress: number } | null>(null);
+  // Free sample (anyone signed in can download it): same upload flow, its own slot and object prefix
+  const [sample, setSample] = React.useState<FileState | null>(
+    initial?.sample_path && initial.sample_name ? { path: initial.sample_path, name: initial.sample_name, size: initial.sample_size } : null,
+  );
+  const [sampleJob, setSampleJob] = React.useState<{ name: string; progress: number } | null>(null);
   const [mode, setMode] = React.useState<"edit" | "preview">("edit");
   const [saving, setSaving] = React.useState<null | "draft" | "published">(null);
   const [imgBusy, setImgBusy] = React.useState(false);
@@ -76,7 +81,9 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
   const coverInput = React.useRef<HTMLInputElement>(null);
   const galleryInput = React.useRef<HTMLInputElement>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
+  const sampleInput = React.useRef<HTMLInputElement>(null);
   const job = React.useRef<ProductUpload | null>(null);
+  const sampleUp = React.useRef<ProductUpload | null>(null);
 
   const touch = <T,>(set: (v: T) => void) => (v: T) => {
     set(v);
@@ -84,15 +91,21 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
   };
 
   React.useEffect(() => {
-    if (!dirty && !fileJob) return;
+    if (!dirty && !fileJob && !sampleJob) return;
     const h = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
-  }, [dirty, fileJob]);
-  React.useEffect(() => () => job.current?.abort(), []);
+  }, [dirty, fileJob, sampleJob]);
+  React.useEffect(
+    () => () => {
+      job.current?.abort();
+      sampleUp.current?.abort();
+    },
+    [],
+  );
 
   const priceNum = toNumber(price);
   const compareNum = compareAt.trim() ? toNumber(compareAt) : null;
@@ -101,7 +114,7 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
   const titleOk = title.trim().length > 0 && title.length <= PRODUCT_LIMITS.title;
   const descOk = description.length <= PRODUCT_LIMITS.description;
   const off = priceOk && compareNum && compareOk ? discountPercent(priceNum, compareNum) : 0;
-  const uploading = !!fileJob || imgBusy;
+  const uploading = !!fileJob || !!sampleJob || imgBusy;
 
   const save = async (next: "draft" | "published") => {
     if (!titleOk) return toast("ใส่ชื่อสินค้าก่อน");
@@ -129,6 +142,9 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
       file_path: file?.path ?? null,
       file_name: file?.name ?? null,
       file_size: file?.size ?? null,
+      sample_path: sample?.path ?? null,
+      sample_name: sample?.name ?? null,
+      sample_size: sample?.size ?? null,
     });
     setSaving(null);
     if (!r.ok) return toast(r.error);
@@ -178,7 +194,7 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
     const ticket = await createProductFileTicketAction(id, f.name);
     if (!ticket.ok) return toast(ticket.error);
     setFileJob({ name: f.name, progress: 0 });
-    const up = uploadProductFile(f, ticket.data, id, (p) => setFileJob({ name: f.name, progress: p }));
+    const up = uploadProductFile(f, ticket.data, `${id}/`, (p) => setFileJob({ name: f.name, progress: p }));
     job.current = up;
     try {
       const objectName = await up.done;
@@ -189,6 +205,28 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
     } finally {
       job.current = null;
       setFileJob(null);
+    }
+  };
+
+  // ── Free sample (same private bucket, samples/<id>/ prefix) ──
+  const pickSample = async (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > PRODUCT_LIMITS.fileBytes) return toast("ไฟล์ใหญ่เกิน 2 GB");
+    if (f.size === 0) return toast("ไฟล์นี้ว่างเปล่า");
+    const ticket = await createProductFileTicketAction(id, f.name, true);
+    if (!ticket.ok) return toast(ticket.error);
+    setSampleJob({ name: f.name, progress: 0 });
+    const up = uploadProductFile(f, ticket.data, `samples/${id}/`, (p) => setSampleJob({ name: f.name, progress: p }));
+    sampleUp.current = up;
+    try {
+      const objectName = await up.done;
+      touch(setSample)({ path: objectName, name: f.name, size: f.size });
+      toast("อัปโหลดไฟล์ตัวอย่างเสร็จแล้ว กด “บันทึก” เพื่อใช้ไฟล์นี้");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
+    } finally {
+      sampleUp.current = null;
+      setSampleJob(null);
     }
   };
 
@@ -325,6 +363,74 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
                 </button>
               )}
               {file && file.path !== initial?.file_path && !fileJob && <p className="t-caption mt-2 text-member">ไฟล์ใหม่ยังไม่ได้บันทึก กด “บันทึก” ด้านบนเพื่อใช้ไฟล์นี้</p>}
+            </div>
+          </section>
+
+          {/* ───── Free sample ───── */}
+          <section className="rounded-[16px] border border-border bg-surface p-5">
+            <h3 className="text-[15px] font-semibold">ไฟล์ตัวอย่าง (ให้โหลดฟรี)</h3>
+            <p className="t-meta mt-1">คนที่สมัครบัญชีแล้วโหลดได้ฟรี ไม่ต้องซื้อ · คนที่ไม่ได้ล็อกอินโหลดไม่ได้</p>
+            <input
+              ref={sampleInput}
+              type="file"
+              hidden
+              onChange={(e) => {
+                void pickSample(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <div className="mt-3">
+              {sampleJob ? (
+                <div role="status" aria-live="polite">
+                  <div className="flex items-center justify-between gap-3 text-[13px]">
+                    <span className="min-w-0 truncate font-medium">{sampleJob.name}</span>
+                    <span className="tnum shrink-0 text-text-2">{Math.round(sampleJob.progress * 100)}%</span>
+                  </div>
+                  <div
+                    className="mt-2 h-2 overflow-hidden rounded-full bg-hover"
+                    role="progressbar"
+                    aria-label="ความคืบหน้าการอัปโหลดไฟล์ตัวอย่าง"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(sampleJob.progress * 100)}
+                  >
+                    <div className="h-full rounded-full bg-text transition-[width] duration-200" style={{ width: `${sampleJob.progress * 100}%` }} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <p className="t-caption text-text-2">อย่าปิดหน้านี้จนกว่าจะเสร็จ ถ้าเน็ตหลุดเลือกไฟล์เดิมซ้ำเพื่ออัปโหลดต่อ</p>
+                    <Button size="sm" variant="ghost" onClick={() => sampleUp.current?.abort()}>
+                      <X /> ยกเลิก
+                    </Button>
+                  </div>
+                </div>
+              ) : sample ? (
+                <div className="flex items-center gap-3 rounded-[12px] border border-border bg-bg px-4 py-3">
+                  <Download className="size-5 shrink-0 text-text-2" strokeWidth={1.75} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium">{sample.name}</p>
+                    <p className="t-meta">{sample.size ? formatFileSize(sample.size) : "อัปโหลดแล้ว"}</p>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => sampleInput.current?.click()}>
+                    เปลี่ยนไฟล์
+                  </Button>
+                  <Button size="icon-sm" variant="ghost" aria-label="เอาไฟล์ตัวอย่างออก" onClick={() => touch(setSample)(null)}>
+                    <Trash2 />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => sampleInput.current?.click()}
+                  className="flex w-full flex-col items-center justify-center gap-1.5 rounded-[12px] border border-dashed border-border-strong px-4 py-6 text-[14px] text-text-2 transition-colors hover:bg-hover hover:text-text"
+                >
+                  <FileUp className="size-6" strokeWidth={1.5} aria-hidden />
+                  <span className="font-medium">เลือกไฟล์ตัวอย่าง (เช่น PDF บทแรก)</span>
+                  <span className="t-caption">ไม่บังคับ · ไม่ใส่ก็ได้ ปุ่มโหลดตัวอย่างจะไม่แสดงในหน้าสินค้า</span>
+                </button>
+              )}
+              {sample && sample.path !== initial?.sample_path && !sampleJob && <p className="t-caption mt-2 text-member">ไฟล์ตัวอย่างใหม่ยังไม่ได้บันทึก กด “บันทึก” ด้านบนเพื่อใช้ไฟล์นี้</p>}
+              {!sample && initial?.sample_path && <p className="t-caption mt-2 text-member">เอาไฟล์ตัวอย่างออกแล้ว กด “บันทึก” ด้านบนเพื่อให้มีผล</p>}
+              {saved && initial?.sample_name && <p className="t-meta tnum mt-2">โหลดไปแล้ว {formatNumber(initial.sample_downloads)} ครั้ง</p>}
             </div>
           </section>
 

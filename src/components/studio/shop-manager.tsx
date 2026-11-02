@@ -97,6 +97,7 @@ export function ShopManager({ rows, purchases }: { rows: ProductAdminRow[]; purc
                             <Star className="size-3" /> แนะนำ
                           </span>
                         )}
+                        {r.sample_name && <span>ตัวอย่างฟรี · โหลด {formatNumber(r.sample_downloads)}</span>}
                         <span className="sm:hidden">
                           {formatBaht(r.price_thb)} · ขาย {formatNumber(r.sales_count)}
                         </span>

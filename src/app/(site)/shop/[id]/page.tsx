@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BookOpen, Check, ChevronLeft, FileDown, GraduationCap, Pencil } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, Download, FileDown, GraduationCap, Pencil } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
 import { getProduct } from "@/lib/server/shop";
 import { getPlaylist } from "@/lib/server/queries";
@@ -11,7 +11,7 @@ import { Markdown } from "@/components/community/markdown";
 import { Button } from "@/components/ui/button";
 import { formatLongDuration, formatNumber } from "@/lib/format";
 import { productJsonLd, productMetadata } from "@/lib/seo";
-import { PRODUCT_TYPE_LABEL, SHOP_FAQ, deliveryInfo, discountPercent, formatBaht, formatFileSize, productCheckoutHref } from "@/lib/shop";
+import { PRODUCT_TYPE_LABEL, SHOP_FAQ, deliveryInfo, discountPercent, formatBaht, formatFileSize, productCheckoutHref, productHref, productSampleHref } from "@/lib/shop";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -45,6 +45,28 @@ export default async function ProductPage({ params }: Props) {
     <Button asChild variant="primary" size="lg" className="h-14 w-full text-[16px]">
       <Link href={productCheckoutHref(p.id)}>ซื้อเลย · {formatBaht(p.price_thb)}</Link>
     </Button>
+  ) : null;
+
+  // Free sample: signed-in users download it straight away; guests are sent to sign up and come back here.
+  // A plain <a> (not <Link>): the route is a download redirect, so it must never be prefetched.
+  const sampleExt = p.sample_name?.split(".").pop()?.toUpperCase() ?? "";
+  const sampleMeta = ["ตัวอย่าง", /^[A-Z0-9]{1,5}$/.test(sampleExt) ? sampleExt : "", formatFileSize(p.sample_size)].filter(Boolean).join(" · ");
+  const sample = p.has_sample ? (
+    <div className="w-full lg:flex-1">
+      <Button asChild variant="outline" size="lg" className="h-14 w-full text-[16px]">
+        {viewer ? (
+          <a href={productSampleHref(p.id)}>
+            <Download strokeWidth={2} /> โหลดตัวอย่างฟรี
+          </a>
+        ) : (
+          <Link href={`/signup?next=${encodeURIComponent(productHref(p.id))}`}>
+            <Download strokeWidth={2} /> โหลดตัวอย่างฟรี
+          </Link>
+        )}
+      </Button>
+      {!viewer && <p className="t-meta mt-2 text-center">สมัครฟรีหรือเข้าสู่ระบบเพื่อโหลดตัวอย่าง</p>}
+      <p className="t-caption mt-1.5 truncate text-center text-text-2">{sampleMeta}</p>
+    </div>
   ) : null;
 
   return (
@@ -90,7 +112,13 @@ export default async function ProductPage({ params }: Props) {
           </div>
           <p className="t-meta mt-1">จ่ายครั้งเดียว ไม่ต่ออายุอัตโนมัติ · ไม่ต้องเป็นสมาชิก</p>
 
-          <div className="mt-6 hidden lg:block">{buy}</div>
+          {/* Desktop: buy + free sample side by side. Phones: the buy button lives in the sticky bar below, the sample button stays here full width. */}
+          {(buy || sample) && (
+            <div className="mt-6 flex flex-col items-start gap-3 lg:flex-row">
+              {buy && <div className="hidden w-full lg:block lg:flex-1">{buy}</div>}
+              {sample}
+            </div>
+          )}
           {viewer?.is_admin && (
             <Button asChild variant="ghost" size="sm" className="mt-2 hidden lg:inline-flex">
               <Link href={`/studio/shop/${p.id}/edit`}>

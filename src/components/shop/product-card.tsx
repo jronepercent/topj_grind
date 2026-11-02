@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ShoppingBag } from "lucide-react";
+import { Check, Download, ShoppingBag } from "lucide-react";
 import { PRODUCT_TYPE_LABEL, discountPercent, formatBaht, productHref, type ProductCardData } from "@/lib/shop";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export function ProductCard({
     <Link
       href={productHref(p.id)}
       className={cn("group block min-w-0 rounded-[14px]", row ? "w-[160px] shrink-0 sm:w-[200px]" : "w-full", className)}
-      aria-label={`${p.title} ${formatBaht(p.price_thb)}${p.owned ? " (เป็นเจ้าของแล้ว)" : ""}`}
+      aria-label={`${p.title} ${formatBaht(p.price_thb)}${p.owned ? " (เป็นเจ้าของแล้ว)" : ""}${p.has_sample ? " (มีตัวอย่างฟรี)" : ""}`}
     >
       <div className="relative aspect-[4/5] overflow-hidden rounded-[14px] border border-border bg-surface">
         {p.cover_url ? (
@@ -51,6 +51,11 @@ export function ProductCard({
         <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold leading-4 text-white backdrop-blur">
           {PRODUCT_TYPE_LABEL[p.product_type]}
         </span>
+        {p.has_sample && !p.owned && (
+          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold leading-4 text-white backdrop-blur">
+            <Download className="size-3" strokeWidth={2.25} aria-hidden /> มีตัวอย่างฟรี
+          </span>
+        )}
         {p.owned && (
           <span className="absolute inset-x-2 bottom-2 inline-flex items-center justify-center gap-1 rounded-full bg-black/75 px-2 py-1 text-[11px] font-semibold leading-4 text-success backdrop-blur">
             <Check className="size-3.5" strokeWidth={2.5} aria-hidden /> เป็นเจ้าของแล้ว

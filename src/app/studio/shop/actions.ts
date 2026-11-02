@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/server/auth";
 import { limit, run } from "@/lib/server/action-utils";
 import { signImageUpload } from "@/lib/server/images";
-import { deleteProduct, grantProduct, newProductObject, PRODUCT_BUCKET, refundPurchase, saveProduct, setProductFeatured, type ProductInput } from "@/lib/server/shop";
+import { deleteProduct, grantProduct, newProductObject, newSampleObject, PRODUCT_BUCKET, refundPurchase, saveProduct, setProductFeatured, type ProductInput } from "@/lib/server/shop";
 import { isUuid } from "@/lib/server/queries";
 import { HttpError } from "@/lib/server/auth";
 
@@ -26,8 +26,8 @@ export async function signProductImageAction(contentType: string) {
   });
 }
 
-/** Step 1 of a file upload: a fresh unguessable object name in the private `products` bucket. */
-export async function createProductFileTicketAction(productId: string, fileName: string) {
+/** Step 1 of a file upload: a fresh unguessable object name in the private `products` bucket (`sample` = the free sample, under samples/<id>/). */
+export async function createProductFileTicketAction(productId: string, fileName: string, sample = false) {
   return run(async (): Promise<ProductFileTicket> => {
     const v = await requireAdmin();
     limit(`product-file:${v.id}`, 20, 60_000);
@@ -36,7 +36,7 @@ export async function createProductFileTicketAction(productId: string, fileName:
     if (!base) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
     return {
       bucket: PRODUCT_BUCKET,
-      objectName: newProductObject(productId, String(fileName ?? "")),
+      objectName: sample ? newSampleObject(productId, String(fileName ?? "")) : newProductObject(productId, String(fileName ?? "")),
       // Supabase recommends the dedicated storage hostname for large uploads (hosted projects only).
       endpoint: `${base.replace(/^(https:\/\/[a-z0-9]+)\.supabase\.co$/, "$1.storage.supabase.co")}/storage/v1/upload/resumable`,
     };

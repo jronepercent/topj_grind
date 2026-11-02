@@ -28,12 +28,13 @@ export const PRODUCT_BUCKET = "products";
 /** Signed download links live for one minute — long enough to start the download, too short to share. */
 export const DOWNLOAD_TTL = 60;
 
-const CARD_COLS = "id, kind, product_type, title, subtitle, cover_url, price_thb, compare_at_thb, is_featured";
-const PUBLIC_COLS = `${CARD_COLS}, description, images, status, file_name, file_size, course_playlist_id, created_at, updated_at`;
+// sample_path (the free sample's object) is, like file_path, never selected here — only its display name (non-null = has a sample) and size.
+const CARD_COLS = "id, kind, product_type, title, subtitle, cover_url, price_thb, compare_at_thb, is_featured, sample_name";
+const PUBLIC_COLS = `${CARD_COLS}, description, images, status, file_name, file_size, sample_size, course_playlist_id, created_at, updated_at`;
 const ADMIN_COLS = `${PUBLIC_COLS}, position, stock, deleted_at`;
 
-type CardRow = Omit<ProductCardData, "owned" | "price_thb" | "compare_at_thb"> & { price_thb: number | string; compare_at_thb: number | string | null };
-type PublicRow = CardRow & Omit<ProductPublic, keyof ProductCardData | "has_file"> & { file_size: number | string | null };
+type CardRow = Omit<ProductCardData, "owned" | "has_sample" | "price_thb" | "compare_at_thb"> & { price_thb: number | string; compare_at_thb: number | string | null; sample_name: string | null };
+type PublicRow = CardRow & Omit<ProductPublic, keyof ProductCardData | "has_file" | "sample_name" | "sample_size"> & { file_size: number | string | null; sample_size: number | string | null };
 type AdminRowDb = PublicRow & { position: number; stock: number | null; deleted_at: string | null };
 
 const num = (v: number | string) => Number(v);
@@ -49,6 +50,7 @@ function card(r: CardRow): ProductCardData {
     price_thb: num(r.price_thb),
     compare_at_thb: r.compare_at_thb == null ? null : num(r.compare_at_thb),
     is_featured: r.is_featured,
+    has_sample: !!r.sample_name,
   };
 }
 
@@ -60,6 +62,8 @@ function full(r: PublicRow): ProductPublic {
     has_file: !!r.file_name,
     file_name: r.file_name,
     file_size: r.file_size == null ? null : num(r.file_size),
+    sample_name: r.sample_name,
+    sample_size: r.sample_size == null ? null : num(r.sample_size),
     course_playlist_id: r.course_playlist_id,
     status: r.status,
     created_at: r.created_at,
@@ -90,7 +94,7 @@ const loadCards = unstable_cache(
       .order("created_at", { ascending: false });
     return tolerate(res as unknown as { data: CardRow[] | null; error: { code?: string; message: string } | null }, [], "products").map(card);
   },
-  ["tg-shop-cards-v1"],
+  ["tg-shop-cards-v2"],
   { tags: [SHOP_TAG], revalidate: 30 },
 );
 
@@ -187,6 +191,29 @@ export async function downloadUrlFor(viewer: Pick<Viewer, "id" | "is_admin">, pr
   return signed.data.signedUrl;
 }
 
+/**
+ * A 60-second signed URL for the product's FREE sample — any signed-in user, no purchase needed (the route turns guests away first).
+ * Drafts are for admins only. Each download is logged to sample_downloads (best effort: a logging error never blocks the file).
+ * Admin downloads are not logged, so testing the flow does not inflate the count the owner reads as leads.
+ */
+export async function sampleUrlFor(viewer: Pick<Viewer, "id" | "is_admin">, productId: string): Promise<string> {
+  if (!isUuid(productId)) throw new HttpError(404, "ไม่พบสินค้า");
+  const { data, error } = await adminDb().from("products").select("sample_path, sample_name, status, deleted_at").eq("id", productId).maybeSingle();
+  if (error) throw new Error(`sample product: ${error.message}`);
+  if (!data || data.deleted_at || (data.status !== "published" && !viewer.is_admin)) throw new HttpError(404, "ไม่พบสินค้า");
+  if (!data.sample_path || !data.sample_name) throw new HttpError(404, "สินค้านี้ไม่มีไฟล์ตัวอย่าง");
+  const signed = await adminDb().storage.from(PRODUCT_BUCKET).createSignedUrl(data.sample_path as string, DOWNLOAD_TTL, { download: data.sample_name as string });
+  if (signed.error || !signed.data?.signedUrl) {
+    console.error(`sample sign: ${signed.error?.message ?? "no url"}`);
+    throw new HttpError(404, "ไม่พบไฟล์ กรุณาติดต่อทีมงาน");
+  }
+  if (!viewer.is_admin) {
+    const log = await adminDb().from("sample_downloads").insert({ user_id: viewer.id, product_id: productId });
+    if (log.error) console.error(`sample log: ${log.error.message}`);
+  }
+  return signed.data.signedUrl;
+}
+
 // ───────────────────────── Studio ─────────────────────────
 function refreshShop(id?: string) {
   revalidateTag(SHOP_TAG);
@@ -206,20 +233,40 @@ async function salesByProduct(): Promise<Map<string, number>> {
   }
 }
 
+/** product id → how many times its free sample was downloaded. */
+async function sampleDownloadsByProduct(): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let from = 0; ; from += 1000) {
+    const res = await adminDb().from("sample_downloads").select("product_id").order("created_at").order("id").range(from, from + 999);
+    const rows = tolerate(res as unknown as { data: { product_id: string }[] | null; error: { code?: string; message: string } | null }, [], "sample downloads");
+    for (const r of rows) out.set(r.product_id, (out.get(r.product_id) ?? 0) + 1);
+    if (rows.length < 1000) return out;
+  }
+}
+
 export async function studioProducts(): Promise<ProductAdminRow[]> {
   const res = await adminDb().from("products").select(ADMIN_COLS).is("deleted_at", null).order("created_at", { ascending: false });
   const rows = tolerate(res as unknown as { data: AdminRowDb[] | null; error: { code?: string; message: string } | null }, [], "studio products");
-  const sales = await salesByProduct();
-  return rows.map((r) => ({ ...full(r), position: r.position, stock: r.stock, deleted_at: r.deleted_at, sales_count: sales.get(r.id) ?? 0 }));
+  const [sales, samples] = await Promise.all([salesByProduct(), sampleDownloadsByProduct()]);
+  return rows.map((r) => ({ ...full(r), position: r.position, stock: r.stock, deleted_at: r.deleted_at, sales_count: sales.get(r.id) ?? 0, sample_downloads: samples.get(r.id) ?? 0 }));
 }
 
 export async function studioProduct(id: string): Promise<ProductAdminFull | null> {
   if (!isUuid(id)) return null;
-  const res = await adminDb().from("products").select(`${ADMIN_COLS}, file_path`).eq("id", id).is("deleted_at", null).maybeSingle();
-  const row = tolerate(res as unknown as { data: (AdminRowDb & { file_path: string | null }) | null; error: { code?: string; message: string } | null }, null, "studio product");
+  const res = await adminDb().from("products").select(`${ADMIN_COLS}, file_path, sample_path`).eq("id", id).is("deleted_at", null).maybeSingle();
+  const row = tolerate(res as unknown as { data: (AdminRowDb & { file_path: string | null; sample_path: string | null }) | null; error: { code?: string; message: string } | null }, null, "studio product");
   if (!row) return null;
-  const sales = await salesByProduct();
-  return { ...full(row), position: row.position, stock: row.stock, deleted_at: row.deleted_at, sales_count: sales.get(id) ?? 0, file_path: row.file_path };
+  const [sales, samples] = await Promise.all([salesByProduct(), sampleDownloadsByProduct()]);
+  return {
+    ...full(row),
+    position: row.position,
+    stock: row.stock,
+    deleted_at: row.deleted_at,
+    sales_count: sales.get(id) ?? 0,
+    sample_downloads: samples.get(id) ?? 0,
+    file_path: row.file_path,
+    sample_path: row.sample_path,
+  };
 }
 
 export interface ProductInput {
@@ -239,6 +286,10 @@ export interface ProductInput {
   file_path: string | null;
   file_name: string | null;
   file_size: number | null;
+  /** The free sample (login required, no purchase): an object under samples/<id>/ in the same private bucket. */
+  sample_path: string | null;
+  sample_name: string | null;
+  sample_size: number | null;
 }
 
 const money = (v: unknown) => Math.round(Number(v) * 100) / 100;
@@ -270,6 +321,12 @@ async function removeProductObjects(paths: (string | null | undefined)[]) {
 export function newProductObject(productId: string, fileName: string) {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
   return `${productId}/${randomUUID()}${/^[a-z0-9]{1,8}$/.test(ext) ? `.${ext}` : ""}`;
+}
+
+/** Same, for the free sample: its own prefix, so a sample object can never be saved as the paid file (or the other way round). */
+export const sampleObjectPrefix = (productId: string) => `samples/${productId}/`;
+export function newSampleObject(productId: string, fileName: string) {
+  return `${sampleObjectPrefix(productId)}${newProductObject(productId, fileName).slice(productId.length + 1)}`;
 }
 
 /** Create or update a product. Everything is re-validated here; the editor only suggests. */
@@ -305,12 +362,12 @@ export async function saveProduct(admin: Viewer, input: ProductInput): Promise<{
   }
 
   const db = adminDb();
-  const existingRes = await db.from("products").select("id, file_path, status").eq("id", id).maybeSingle();
+  const existingRes = await db.from("products").select("id, file_path, sample_path, status").eq("id", id).maybeSingle();
   if (existingRes.error) {
-    if (isMissingRelation(existingRes.error)) throw new HttpError(503, "ยังไม่ได้เปิดใช้ระบบร้านค้า (ต้องรัน migration 0013_shop ก่อน)");
+    if (isMissingRelation(existingRes.error)) throw new HttpError(503, "ยังไม่ได้เปิดใช้ระบบร้านค้า (ต้องรัน migration 0013_shop และ 0016_product_samples ก่อน)");
     throw new Error(`product lookup: ${existingRes.error.message}`);
   }
-  const existing = existingRes.data as { id: string; file_path: string | null; status: string } | null;
+  const existing = existingRes.data as { id: string; file_path: string | null; sample_path: string | null; status: string } | null;
 
   // File: must live in this product's folder and really exist in the private bucket.
   let filePath = input.file_path ? String(input.file_path) : null;
@@ -328,6 +385,24 @@ export async function saveProduct(admin: Viewer, input: ProductInput): Promise<{
     }
   } else {
     fileName = null;
+  }
+
+  // Free sample: optional for any product type; must live under samples/<this product>/ and really exist in the private bucket.
+  const samplePath = input.sample_path ? String(input.sample_path) : null;
+  let sampleName = input.sample_name ? String(input.sample_name).trim().slice(0, 255) : null;
+  let sampleSize: number | null = null;
+  if (samplePath) {
+    if (!samplePath.startsWith(sampleObjectPrefix(id)) || samplePath.includes("..") || samplePath.length > 300) throw new HttpError(400, "ไฟล์ตัวอย่างไม่ถูกต้อง");
+    if (!sampleName) sampleName = samplePath.split("/").pop() ?? "sample";
+    if (samplePath !== existing?.sample_path) {
+      const size = await storageObjectSize(samplePath);
+      if (!size) throw new HttpError(409, "ไม่พบไฟล์ตัวอย่างใน Storage กรุณาอัปโหลดไฟล์ใหม่");
+      sampleSize = size;
+    } else {
+      sampleSize = input.sample_size == null ? null : Math.max(0, Math.round(Number(input.sample_size)) || 0);
+    }
+  } else {
+    sampleName = null;
   }
 
   const status = input.status === "published" ? "published" : "draft";
@@ -353,12 +428,19 @@ export async function saveProduct(admin: Viewer, input: ProductInput): Promise<{
     file_path: filePath,
     file_name: fileName,
     file_size: fileSize,
+    sample_path: samplePath,
+    sample_name: sampleName,
+    sample_size: sampleSize,
     updated_at: now,
   };
   if (existing) {
     const { error } = await db.from("products").update(row).eq("id", id);
     if (error) throw new Error(`update product: ${error.message}`);
-    if (existing.file_path && existing.file_path !== filePath) await removeProductObjects([existing.file_path]);
+    // A replaced / removed file (paid or sample) is deleted from Storage best-effort — the row already points at the new one.
+    await removeProductObjects([
+      existing.file_path && existing.file_path !== filePath ? existing.file_path : null,
+      existing.sample_path && existing.sample_path !== samplePath ? existing.sample_path : null,
+    ]);
   } else {
     const { error } = await db.from("products").insert({ id, ...row });
     if (error) throw new Error(`create product: ${error.message}`);

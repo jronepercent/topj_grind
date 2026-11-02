@@ -46,6 +46,8 @@ export interface ProductCardData {
   /** Original price shown struck through (always > price_thb when set). */
   compare_at_thb: number | null;
   is_featured: boolean;
+  /** A free sample file is attached (login required to download) — shows the “มีตัวอย่างฟรี” badge. */
+  has_sample?: boolean;
   /** true = the signed-in viewer already owns it (set only when the loader was given a viewer). */
   owned?: boolean;
 }
@@ -58,6 +60,9 @@ export interface ProductPublic extends ProductCardData {
   has_file: boolean;
   file_name: string | null;
   file_size: number | null;
+  /** Display name / size of the free sample (its storage path stays on the server). */
+  sample_name: string | null;
+  sample_size: number | null;
   course_playlist_id: string | null;
   status: ProductStatus;
   created_at: string;
@@ -69,12 +74,15 @@ export interface ProductAdminRow extends ProductPublic {
   position: number;
   stock: number | null;
   sales_count: number;
+  /** How many times the free sample was downloaded (sample_downloads rows). */
+  sample_downloads: number;
   deleted_at: string | null;
 }
 
 /** Studio editor payload from the server (adds the object path so a replaced file can be cleaned up). */
 export interface ProductAdminFull extends ProductAdminRow {
   file_path: string | null;
+  sample_path: string | null;
 }
 
 export interface PurchaseView {
@@ -125,6 +133,8 @@ export function formatFileSize(bytes: number | null | undefined): string {
 
 /** Same-origin route helpers. */
 export const productHref = (id: string) => `/shop/${id}`;
+/** Free sample download (login required — the route sends guests to /login and back to the product page). */
+export const productSampleHref = (id: string) => `/api/shop/sample/${id}`;
 export const productCheckoutHref = (id: string) => `/shop/${id}/checkout`;
 
 // ───────── "What you get" copy (from product_type) ─────────

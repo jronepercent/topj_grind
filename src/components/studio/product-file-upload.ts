@@ -24,8 +24,10 @@ export interface ProductUpload {
 /**
  * Product file → private `products` bucket over the resumable (TUS) endpoint, as the signed-in admin.
  * Same approach as podcast audio (src/components/studio/upload-store.ts): 6 MB chunks, retries, a fresh access token per request.
+ * `folder` is the object-name prefix an earlier partial upload must have to be resumed: `<productId>/` for the paid file,
+ * `samples/<productId>/` for the free sample (so the two never resume into each other).
  */
-export function uploadProductFile(file: File, ticket: ProductFileTicket, productId: string, onProgress: (ratio: number) => void): ProductUpload {
+export function uploadProductFile(file: File, ticket: ProductFileTicket, folder: string, onProgress: (ratio: number) => void): ProductUpload {
   let aborter: (() => void) | null = null;
   let stopped = false;
   let cancel: () => void = () => {};
@@ -60,9 +62,9 @@ export function uploadProductFile(file: File, ticket: ProductFileTicket, product
       });
       aborter = () => void upload.abort();
       if (stopped) return reject(new Error("ยกเลิกการอัปโหลดแล้ว"));
-      // Resume if this exact file was partially uploaded to THIS product before (network drop, tab reload).
+      // Resume if this exact file was partially uploaded to THIS product (and slot) before (network drop, tab reload).
       const previous = await upload.findPreviousUploads();
-      const resumable = previous.find((p) => p.metadata?.objectName?.startsWith(`${productId}/`) && p.metadata.bucketName === ticket.bucket);
+      const resumable = previous.find((p) => p.metadata?.objectName?.startsWith(folder) && p.metadata.bucketName === ticket.bucket);
       if (resumable) {
         metadata.objectName = resumable.metadata.objectName;
         upload.resumeFromPreviousUpload(resumable);
