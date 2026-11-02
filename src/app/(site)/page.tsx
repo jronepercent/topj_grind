@@ -13,6 +13,7 @@ import { Row } from "@/components/home/row";
 import { ROW_SIZES, ROW_W } from "@/components/home/sizes";
 import { SectionHeader } from "@/components/ui/misc";
 import { ProductsRow } from "@/components/home/products-row";
+import { MemberPitch } from "@/components/membership/member-pitch";
 import { SPOTLIGHT_COUNT, Spotlight } from "@/components/home/spotlight";
 import { shuffle } from "@/lib/utils";
 
@@ -138,7 +139,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return (
     <div className="tg-page">
       <Hero items={heroItems} />
-      <div className="mx-auto max-w-[1800px] space-y-9 overflow-x-clip px-4 pt-6 sm:space-y-11 sm:px-6 lg:px-8">{rows.filter(Boolean)}</div>
+      <div className="mx-auto max-w-[1800px] space-y-9 overflow-x-clip px-4 pt-6 sm:space-y-11 sm:px-6 lg:px-8">
+        {locked && <MemberPitch />}
+        {rows.filter(Boolean)}
+      </div>
     </div>
   );
 }

@@ -2,18 +2,20 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronDown, FileDown, Headphones, MessageCircle, SquarePlay } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
+import { googleEnabled } from "@/lib/server/providers";
 import { listContent, paymentsFor, siteSettings } from "@/lib/server/queries";
 import { MemberBadge } from "@/components/ui/misc";
 import { PlanCard } from "@/components/membership/plan-card";
+import { BenefitList, MemberStatChips } from "@/components/membership/benefits";
 import { contentHref, daysUntil, formatDuration, formatNumber, thaiDate } from "@/lib/format";
-import { PLANS, PLAN_LIST, planOfPayment, renewalLabel, type PlanCode } from "@/lib/plans";
+import { PLANS, PLAN_LIST, planOfPayment, renewalLabel, yearlySavings, type PlanCode } from "@/lib/plans";
 import { PayButton } from "./_components/pay-button";
 
 export const metadata: Metadata = {
   title: "สมัครสมาชิก",
-  description: "สมาชิก TOPJ_GRIND ดูได้ทุกคลิป ฟังพอดแคสต์ทุกตอน ดาวน์โหลดไฟล์ประกอบ และคอมเมนต์คุยกับ JR ได้โดยตรง",
+  description: "สมาชิก TOPJ_GRIND ดูได้ทุกคลิป ฟังพอดแคสต์ทุกตอน อ่านบทความสำหรับสมาชิก และคอมเมนต์คุยกับ JR ได้โดยตรง",
 };
 
 function safePath(v: string | string[] | undefined) {
@@ -64,8 +66,6 @@ const faq = (line: string | null): { q: string; a: ReactNode }[] => [
   },
 ];
 
-const BENEFIT_ICONS = [SquarePlay, Headphones, FileDown, MessageCircle];
-
 export default async function MembershipPage({ searchParams }: { searchParams: Promise<{ from?: string | string[] }> }) {
   const { from: rawFrom } = await searchParams;
   const from = safePath(rawFrom);
@@ -80,6 +80,21 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   const left = hasExpiry ? Math.max(0, daysUntil(viewer!.expires_at)) : 0;
   const lastPayment = hasExpiry ? (await paymentsFor(viewer!.id).catch(() => []))[0] : undefined;
   const lastPlan = lastPayment ? planOfPayment(lastPayment) : null;
+
+  const save = yearlySavings();
+  const steps = [
+    {
+      title: "สร้างบัญชี",
+      text: viewer ? "เข้าสู่ระบบแล้ว" : (await googleEnabled()) ? "ใช้ Google คลิกเดียว หรือสมัครด้วยอีเมล" : "ใช้อีเมล ไม่ถึง 1 นาที",
+      done: !!viewer,
+    },
+    {
+      title: "เลือกแพ็กเกจ",
+      text: `รายเดือน ${formatNumber(PLANS.monthly.price)} บาท หรือรายปี ${formatNumber(PLANS.yearly.price)} บาท (ประหยัด ${formatNumber(save.percent)}%)`,
+      done: false,
+    },
+    { title: "ชำระเงินแล้วดูได้ทันที", text: "บัตรเครดิต/เดบิต หรือสแกนพร้อมเพย์", done: false },
+  ];
 
   const self = `/membership${from ? `?from=${encodeURIComponent(from)}` : ""}`;
   const checkoutHref = (plan: PlanCode) => `/membership/checkout?plan=${plan}${from ? `&from=${encodeURIComponent(from)}` : ""}`;
@@ -98,7 +113,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           เรียนครบในที่เดียว
         </h1>
         <p className="mx-auto mt-5 max-w-[560px] text-[17px] leading-[27px] text-text-2">
-          วิดีโอเต็ม พอดแคสต์ บทความ และไฟล์ประกอบจาก JR ดูได้ไม่จำกัด เลือกรายเดือน {formatNumber(PLANS.monthly.price)} บาท หรือรายปี{" "}
+          วิดีโอเต็ม พอดแคสต์ และบทความจาก JR ดูได้ไม่จำกัด เลือกรายเดือน {formatNumber(PLANS.monthly.price)} บาท หรือรายปี{" "}
           {formatNumber(PLANS.yearly.price)} บาท
         </p>
 
@@ -133,9 +148,44 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
         )}
       </section>
 
+      {/* ── Benefits ── */}
+      <section className="mx-auto max-w-[980px]" aria-labelledby="benefits-h">
+        <h2 id="benefits-h" className="t-h1 text-center">
+          สมาชิกได้อะไรบ้าง
+        </h2>
+        <MemberStatChips className="mt-4 justify-center" />
+        <BenefitList benefits={s.paywall_benefits} className="mt-8" />
+      </section>
+
+      {/* ── 3 easy steps (nothing to explain once someone is a member) ── */}
+      {!isMember && (
+        <section className="mx-auto mt-16 max-w-[980px]" aria-labelledby="steps-h">
+          <h2 id="steps-h" className="t-h1 text-center">
+            สมัครง่าย 3 ขั้นตอน
+          </h2>
+          <ol className="mt-8 grid gap-3 md:grid-cols-3 md:gap-4">
+            {steps.map((st, i) => (
+              <li key={st.title} className="flex items-start gap-4 rounded-[16px] border border-border bg-surface p-5 md:flex-col md:gap-3">
+                <span
+                  className={`tnum flex size-9 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold ${
+                    st.done ? "bg-member text-on-member" : "bg-member/15 text-member"
+                  }`}
+                >
+                  {st.done ? <Check className="size-[18px]" strokeWidth={2.5} aria-label="เสร็จแล้ว" /> : i + 1}
+                </span>
+                <div>
+                  <h3 className="text-[16px] font-semibold">{st.title}</h3>
+                  <p className="t-meta mt-1">{st.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {/* ── Plans (the channel owner's own account has full access, so nothing to sell there) ── */}
       {(!isMember || hasExpiry) && (
-        <section className="mx-auto max-w-[900px]" aria-labelledby="plans-h">
+        <section className="mx-auto mt-16 max-w-[900px]" aria-labelledby="plans-h">
           <h2 id="plans-h" className="t-h1 mb-8 text-center">
             {isMember ? "ต่ออายุล่วงหน้า" : "เลือกแพ็กเกจ"}
           </h2>
@@ -193,26 +243,6 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           </ul>
         </section>
       )}
-
-      {/* ── Benefits ── */}
-      <section className="mx-auto mt-16 max-w-[980px]" aria-labelledby="benefits-h">
-        <h2 id="benefits-h" className="t-h1 text-center">
-          สมาชิกได้อะไรบ้าง
-        </h2>
-        <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-          {s.paywall_benefits.map((b, i) => {
-            const Icon = BENEFIT_ICONS[i] ?? Check;
-            return (
-              <li key={b} className="flex items-start gap-4 rounded-[16px] border border-border bg-surface p-5">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-member/15">
-                  <Icon className="size-5 text-member" strokeWidth={1.75} aria-hidden />
-                </span>
-                <span className="pt-2 text-[15px] font-medium">{b}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
 
       {/* ── FAQ ── */}
       <section className="mx-auto mt-16 max-w-[760px] pb-8" aria-labelledby="faq-h">
