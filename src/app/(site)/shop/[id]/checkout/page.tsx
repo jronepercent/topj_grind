@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
-import { checkoutMode } from "@/lib/server/payments";
-import { getProduct } from "@/lib/server/shop";
+import { productCheckoutMode } from "@/lib/server/payments";
+import { siteSettings } from "@/lib/server/queries";
+import { getProduct, productPaymentUrl } from "@/lib/server/shop";
 import { ProductCheckoutForm } from "@/components/shop/product-checkout-form";
 import { isSafePath, productHref } from "@/lib/shop";
 
@@ -36,7 +37,8 @@ export default async function ProductCheckoutPage({
   // Already theirs: no second payment, straight to the library.
   if (product.owned) redirect("/library?tab=purchases");
 
-  const mode = checkoutMode();
+  const mode = productCheckoutMode(await productPaymentUrl(id));
+  const line = mode === "closed" ? ((await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null) : null;
   return (
     <div className="tg-page mx-auto max-w-[1100px] px-4 pb-32 pt-6 sm:px-6 sm:pt-10 lg:px-8 lg:pb-12">
       <Link href={productHref(id)} className="-ml-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[14px] text-text-2 hover:bg-hover hover:text-text">
@@ -58,6 +60,8 @@ export default async function ProductCheckoutPage({
         mode={mode}
         from={from ?? null}
         demoEmail={mode === "demo" ? viewer.email : null}
+        payEmail={mode === "live" ? viewer.email : null}
+        lineUrl={line}
       />
     </div>
   );

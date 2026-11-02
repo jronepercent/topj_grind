@@ -30,6 +30,9 @@ export const PRODUCT_LIMITS = {
   images: 10,
   /** Price ceiling the editor accepts (numeric(10,2) could hold more, this just catches typos). */
   price: 1_000_000,
+  /** products.payment_url / kohort_name (0017_product_payment_links.sql). */
+  paymentUrl: 500,
+  kohortName: 200,
   /** Mirrors the bucket's file_size_limit (2 GB). */
   fileBytes: 2 * 1024 * 1024 * 1024,
 } as const;
@@ -77,6 +80,12 @@ export interface ProductAdminRow extends ProductPublic {
   /** How many times the free sample was downloaded (sample_downloads rows). */
   sample_downloads: number;
   deleted_at: string | null;
+  /** The product's own Kohort payment link (studio only — checkout reads it on the server). */
+  payment_url: string | null;
+  /** The product's name as typed on Kohort (matches webhooks); null = the title is used. */
+  kohort_name: string | null;
+  /** Kohort's payment-link uuid, learned from the first matching payment. */
+  kohort_link_id: string | null;
 }
 
 /** Studio editor payload from the server (adds the object path so a replaced file can be cleaned up). */

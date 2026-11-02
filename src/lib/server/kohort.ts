@@ -1,9 +1,11 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { adminDb } from "@/lib/supabase/clients";
+import { pickKohortProduct, type KohortMatchHow, type KohortProductCandidate } from "@/lib/kohort-match";
 import { CURRENCY, PLANS, PLAN_LIST, isPaymentMethod, isPlanCode, type PlanCode } from "@/lib/plans";
 import type { PaymentMethod } from "@/lib/types";
 import { isMemberUser, rateLimit } from "./auth";
+import { isMissingRelation } from "./queries";
 import { USER_NOT_FOUND_REASON, applyPayment, applyPurchase, type PaymentPayload } from "./mutations";
 
 /**
@@ -170,7 +172,8 @@ function planFromText(s: string): PlanCode | null {
 function parseMethod(v: Scalar | undefined): PaymentMethod {
   const t = String(v ?? "").toLowerCase();
   if (isPaymentMethod(t)) return t;
-  if (/promptpay|prompt_pay|พร้อมเพย์|\bqr/.test(t)) return "promptpay";
+  // Kohort's Thai QR comes as "stripe_qr" (`\bqr` missed it after the underscore and recorded a QR payment as an auto-renewing card).
+  if (/promptpay|prompt_pay|พร้อมเพย์|(^|[^a-z])qr/.test(t)) return "promptpay";
   if (/slip|bank|transfer|โอน|สลิป/.test(t)) return "slip";
   if (/free|coupon|manual/.test(t)) return "manual"; // Kohort: a 100% coupon comes as method/provider "free"
   return "card";
@@ -199,6 +202,8 @@ const REF_KEYS = ["reference", "payment_id", "event_id", "transaction_id", "orde
 const ID_PARENTS = new Set(["payment", "transaction", "order", "invoice", "charge", "data", "purchase"]);
 const PLAN_TEXT_KEYS = ["plan", "plan_name", "product", "product_name", "product_title", "item", "item_name", "title", "description"];
 const TEXT_PARENTS = new Set(["product", "plan", "item", "price", "subscription", "line_item"]);
+// Where the bought product's name lives (shop products are matched on it, see matchProduct). Nested { product: { name } } is read too.
+const PRODUCT_NAME_KEYS = ["product_name", "product", "product_title", "item_name", "item"];
 const METHOD_KEYS = ["method", "payment_method", "payment_method_type", "payment_type", "payment_channel", "channel"];
 const DATE_KEYS = ["paid_at", "created_at", "timestamp", "paid_date", "payment_date", "date"];
 
@@ -210,6 +215,8 @@ export interface KohortPayment {
   paidAtGiven: boolean;
   /** Why we could not tell who paid for what (no email / plan / amount), or null when it looks complete. */
   unmatched: string | null;
+  /** A shop product matched by name that has no kohort_link_id yet, and the payment carried a link_id → save it (see learnKohortLink). */
+  learn: { product_id: string; link_id: string } | null;
 }
 
 /** A small, bounded copy of the original body so a payment_errors row stays readable and cheap. */
@@ -224,7 +231,20 @@ function slim(v: unknown, depth = 0): unknown {
   return String(v).slice(0, 100);
 }
 
-export function normalizeKohort(body: Record<string, unknown>, query: Record<string, string> = {}, now = Date.now()): KohortPayment {
+/** Link id first, then each product-name candidate the payload offers. */
+function matchProduct(products: KohortProductCandidate[], linkId: string | undefined, names: string[]) {
+  let m = pickKohortProduct(products, linkId, names[0]);
+  for (let i = 1; !m && i < names.length; i++) m = pickKohortProduct(products, undefined, names[i]);
+  return m;
+}
+
+/** `products` = the non-deleted shop products (loadKohortProducts); without them only an explicit product_id leaf counts as a product. */
+export function normalizeKohort(
+  body: Record<string, unknown>,
+  query: Record<string, string> = {},
+  now = Date.now(),
+  products: KohortProductCandidate[] = [],
+): KohortPayment {
   const leaves = leavesOf(body, query);
   const all = leaves.flat();
 
@@ -284,17 +304,36 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
   }
 
   const productRaw = [...find(leaves, ["product_id"])].map((l) => String(l.value).trim())[0];
-  const product_id = productRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productRaw) ? productRaw : undefined;
+  let product_id = productRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productRaw) ? productRaw : undefined;
+  let productFrom: "id" | KohortMatchHow | null = product_id ? "id" : null;
+  let learn: KohortPayment["learn"] = null;
+
+  const linkId = [...find(leaves, ["link_id", "payment_link_id", "checkout_link_id"])].map((l) => String(l.value).trim().toLowerCase())[0];
+  const linkedPlan = linkId ? linkPlans()[linkId] : undefined;
+
+  // Shop product: Kohort never sends our product id, so match its link_id / product name against the shop. A link listed in
+  // KOHORT_LINK_PLANS is a membership and wins; once a product matches, ALL plan detection below is skipped — a product
+  // priced 990 must not be read as the monthly plan.
+  if (!product_id && !linkedPlan && products.length) {
+    const names = [
+      ...[...find(leaves, PRODUCT_NAME_KEYS)].map((l) => String(l.value)),
+      ...all.filter((l) => l.key === "name" && (l.parent === "product" || l.parent === "item")).map((l) => String(l.value)),
+    ].slice(0, 6);
+    const m = matchProduct(products, linkId, names);
+    if (m) {
+      product_id = m.product.id;
+      productFrom = m.how;
+      if (m.how === "name" && linkId && !m.product.kohort_link_id) learn = { product_id: m.product.id, link_id: linkId };
+    }
+  }
 
   // Plan: which Kohort payment link was paid (link_id → KOHORT_LINK_PLANS), else an explicit monthly/yearly, else words in
   // the product name, else the amount. When the link or the name says which plan it is, the amount is NOT checked — the
   // owner hands out many coupons on Kohort, and the shared secret already proves the call came from Kohort.
   let plan: PlanCode | undefined;
   let planFrom: "link" | "explicit" | "name" | "amount" | null = null;
-  const linkId = [...find(leaves, ["link_id", "payment_link_id", "checkout_link_id"])].map((l) => String(l.value).trim().toLowerCase())[0];
   if (!product_id) {
-    const linked = linkId ? linkPlans()[linkId] : undefined;
-    if (linked) [plan, planFrom] = [linked, "link"];
+    if (linkedPlan) [plan, planFrom] = [linkedPlan, "link"];
     const explicit = [...find(leaves, ["plan"])].map((l) => String(l.value).trim().toLowerCase()).find(isPlanCode);
     if (!plan && explicit) [plan, planFrom] = [explicit as PlanCode, "explicit"];
     if (!plan) {
@@ -392,6 +431,7 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
     currency,
     plan: plan ?? null,
     product_id: product_id ?? null,
+    product_from: productFrom,
     method,
     reference,
     paid_at,
@@ -404,8 +444,8 @@ export function normalizeKohort(body: Record<string, unknown>, query: Record<str
     original: slim(body),
     ...(Object.keys(query).length ? { query: slim(query) } : {}),
   };
-  const unmatched = notPaid ? `สถานะยังไม่ใช่ชำระแล้ว (${status})` : !email ? "ไม่พบอีเมลในข้อมูล" : !(plan || product_id) ? `ไม่พบแพ็กเกจที่ตรงกัน (link_id ${linkId ?? "-"} ไม่อยู่ใน KOHORT_LINK_PLANS และชื่อสินค้า/ยอดเงินไม่บอกแพ็ก)` : amount === undefined && !trustedPlan ? "ไม่พบยอดเงินในข้อมูล" : null;
-  return { payload, raw, referenceGenerated, paidAtGiven, unmatched };
+  const unmatched = notPaid ? `สถานะยังไม่ใช่ชำระแล้ว (${status})` : !email ? "ไม่พบอีเมลในข้อมูล" : !(plan || product_id) ? `ไม่พบแพ็กเกจหรือสินค้าที่ตรงกัน (link_id ${linkId ?? "-"} ไม่อยู่ใน KOHORT_LINK_PLANS ไม่ตรงกับสินค้าในร้านค้า และชื่อสินค้า/ยอดเงินไม่บอกแพ็ก)` : amount === undefined && !trustedPlan ? "ไม่พบยอดเงินในข้อมูล" : null;
+  return { payload, raw, referenceGenerated, paidAtGiven, unmatched, learn };
 }
 
 /**
@@ -436,6 +476,35 @@ export async function logRejectedKohort(info: Record<string, unknown>) {
     .from("payment_errors")
     .insert({ payload: { source: "kohort_rejected", ...info }, reason: "Kohort: secret ไม่ตรง" });
   if (error) throw new Error(`payment_errors: ${error.message}`);
+}
+
+/**
+ * The shop products a Kohort payment can be matched to (non-deleted; one small query). If migration 0017 is not applied yet
+ * (columns missing) there is nothing to match, so membership payments keep working; any other database error throws so Kohort retries.
+ */
+export async function loadKohortProducts(): Promise<KohortProductCandidate[]> {
+  const { data, error } = await adminDb().from("products").select("id, title, kohort_name, kohort_link_id, price_thb").is("deleted_at", null);
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204" || isMissingRelation(error)) {
+      console.warn(`kohort webhook: products not matchable yet (${error.message})`);
+      return [];
+    }
+    throw new Error(`kohort products: ${error.message}`);
+  }
+  return (data ?? []) as KohortProductCandidate[];
+}
+
+/**
+ * Remember which Kohort payment link sells a product, learned from a payment that matched it by name. Only fills an empty
+ * kohort_link_id; best effort — a unique conflict (the link already belongs to another product) or any error is ignored.
+ */
+export async function learnKohortLink(productId: string, linkId: string): Promise<void> {
+  try {
+    const { error } = await adminDb().from("products").update({ kohort_link_id: linkId.trim().toLowerCase().slice(0, 100) }).eq("id", productId).is("kohort_link_id", null);
+    if (error && error.code !== "23505") console.warn(`kohort link learn: ${error.message}`);
+  } catch (e) {
+    console.warn("kohort link learn failed", e);
+  }
 }
 
 /** A product purchase may be sent in satang too; compare against that product's price (one cheap lookup). */

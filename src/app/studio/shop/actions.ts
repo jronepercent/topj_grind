@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/server/auth";
 import { limit, run } from "@/lib/server/action-utils";
 import { signImageUpload } from "@/lib/server/images";
-import { deleteProduct, grantProduct, newProductObject, newSampleObject, PRODUCT_BUCKET, refundPurchase, saveProduct, setProductFeatured, type ProductInput } from "@/lib/server/shop";
+import { clearProductKohortLink, deleteProduct, grantProduct, newProductObject, newSampleObject, PRODUCT_BUCKET, refundPurchase, saveProduct, setProductFeatured, type ProductInput } from "@/lib/server/shop";
 import { isUuid } from "@/lib/server/queries";
 import { HttpError } from "@/lib/server/auth";
 
@@ -54,6 +54,15 @@ export async function saveProductAction(input: ProductInput) {
 export async function deleteProductAction(id: string) {
   return run(async () => {
     await deleteProduct(await requireAdmin(), id);
+  });
+}
+
+/** “ล้างการผูก” on the payment card: drop the learned Kohort link id. */
+export async function clearProductKohortLinkAction(id: string) {
+  return run(async () => {
+    const v = await requireAdmin();
+    limit(`product-save:${v.id}`, 60, 60_000);
+    await clearProductKohortLink(v, id);
   });
 }
 

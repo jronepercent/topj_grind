@@ -25,7 +25,8 @@ interface CheckoutBase {
 /** Membership plan (the original shape — `kind` may be left out) or a one-off shop product. */
 export type CheckoutInput =
   | (CheckoutBase & { kind?: "plan"; plan: PlanCode })
-  | (CheckoutBase & { kind: "product"; productId: string });
+  /** `paymentUrl` = the product's own payment link (products.payment_url), read on the server — never taken from the browser. */
+  | (CheckoutBase & { kind: "product"; productId: string; paymentUrl?: string | null });
 
 export interface CheckoutSession {
   url: string;
@@ -43,6 +44,7 @@ export type CheckoutResult =
   | { ok: false; error: string; reason: "unavailable" | "rate_limited" };
 
 export const CHECKOUT_UNAVAILABLE = "ระบบชำระเงินยังไม่เปิด";
+export const PRODUCT_UNAVAILABLE = "ยังไม่เปิดให้ซื้อออนไลน์ ทักเราทาง LINE ได้เลย";
 
 // ───────── Adapters ─────────
 
@@ -62,7 +64,7 @@ const demoGateway: PaymentGateway = {
 };
 
 /** A configured payment URL (http/https only), or null when unset / malformed. */
-function parseUrl(raw: string | undefined) {
+function parseUrl(raw: string | null | undefined) {
   const v = raw?.trim();
   if (!v) return null;
   try {
@@ -78,11 +80,11 @@ function parseUrl(raw: string | undefined) {
  *   PAYMENT_URL_<PLAN>_PROMPTPAY  (e.g. Kohort's one-time "ลูกค้าต่ออายุเอง" product, PromptPay buyers only)
  *   PAYMENT_URL_<PLAN>            (the plan's link — Kohort's auto-renewing card product)
  *   PAYMENT_URL                   (one link for everything)
- * Products always use PAYMENT_URL.
+ * Products use their own payment link (products.payment_url), then PAYMENT_URL.
  */
 function paymentUrlFor(input: CheckoutInput) {
   const general = parseUrl(process.env.PAYMENT_URL);
-  if (input.kind === "product") return general;
+  if (input.kind === "product") return parseUrl(input.paymentUrl) ?? general;
   const plan = input.plan === "yearly" ? "YEARLY" : "MONTHLY";
   const perMethod = input.method === "promptpay" ? parseUrl(process.env[`PAYMENT_URL_${plan}_PROMPTPAY`]) : null;
   return perMethod ?? parseUrl(process.env[`PAYMENT_URL_${plan}`]) ?? general;
@@ -103,22 +105,42 @@ const redirectGateway: PaymentGateway = {
   },
 };
 
+const paymentEnvVars = () => [
+  process.env.PAYMENT_URL,
+  process.env.PAYMENT_URL_MONTHLY,
+  process.env.PAYMENT_URL_YEARLY,
+  process.env.PAYMENT_URL_MONTHLY_PROMPTPAY,
+  process.env.PAYMENT_URL_YEARLY_PROMPTPAY,
+];
+
 /** Any payment URL env var wins over demo mode (as before), so a configured production site can never fall into the demo flow. */
 export function resolveGateway(): PaymentGateway | null {
-  const vars = [
-    process.env.PAYMENT_URL,
-    process.env.PAYMENT_URL_MONTHLY,
-    process.env.PAYMENT_URL_YEARLY,
-    process.env.PAYMENT_URL_MONTHLY_PROMPTPAY,
-    process.env.PAYMENT_URL_YEARLY_PROMPTPAY,
-  ];
+  const vars = paymentEnvVars();
   if (vars.some((v) => v?.trim())) return vars.some((v) => parseUrl(v)) ? redirectGateway : null;
   return isDemoMode() ? demoGateway : null;
+}
+
+/**
+ * A product is sold through its own payment link (products.payment_url) or the PAYMENT_URL fallback — the per-plan membership
+ * links can't sell a product. Same rule as above otherwise: with any payment env var set the demo flow is never used.
+ */
+export function resolveProductGateway(productUrl?: string | null): PaymentGateway | null {
+  if (parseUrl(productUrl) || parseUrl(process.env.PAYMENT_URL)) return redirectGateway;
+  return !paymentEnvVars().some((v) => v?.trim()) && isDemoMode() ? demoGateway : null;
 }
 
 /** For the UI: is paying possible at all, and is it the demo flow? */
 export function checkoutMode(): "live" | "demo" | "closed" {
   const g = resolveGateway();
+  return !g ? "closed" : g.id === "demo" ? "demo" : "live";
+}
+
+/** Is the PAYMENT_URL fallback set? (Studio warns about published products with neither their own link nor this.) */
+export const hasGeneralPaymentUrl = () => !!parseUrl(process.env.PAYMENT_URL);
+
+/** Same for one product: pass its payment link (`productPaymentUrl()` in shop.ts). "closed" = show “ยังไม่เปิดให้ซื้อออนไลน์” instead of a pay button. */
+export function productCheckoutMode(productUrl?: string | null): "live" | "demo" | "closed" {
+  const g = resolveProductGateway(productUrl);
   return !g ? "closed" : g.id === "demo" ? "demo" : "live";
 }
 
@@ -129,8 +151,8 @@ export async function startCheckout(input: CheckoutInput): Promise<CheckoutResul
   if (!rateLimit(`checkout:${input.userId}`, 10, 60_000)) {
     return { ok: false, reason: "rate_limited", error: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่" };
   }
-  const gateway = resolveGateway();
-  if (!gateway) return { ok: false, reason: "unavailable", error: CHECKOUT_UNAVAILABLE };
+  const gateway = input.kind === "product" ? resolveProductGateway(input.paymentUrl) : resolveGateway();
+  if (!gateway) return { ok: false, reason: "unavailable", error: input.kind === "product" ? PRODUCT_UNAVAILABLE : CHECKOUT_UNAVAILABLE };
   try {
     return { ok: true, ...(await gateway.createCheckout(input)) };
   } catch (e) {

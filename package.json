@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "webhook:test": "node scripts/webhook-test.mjs",
+    "kohort:test": "node scripts/kohort-match-test.mts",
     "typecheck": "tsc --noEmit",
     "reset:demo": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true})\"",
     "db:migrate": "node scripts/db-migrate.mjs",

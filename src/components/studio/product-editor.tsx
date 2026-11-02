@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Markdown } from "@/components/community/markdown";
 import { uploadProductFile, type ProductUpload } from "./product-file-upload";
 import { PurchasesList } from "./purchases-list";
-import { createProductFileTicketAction, grantProductAction, saveProductAction, signProductImageAction } from "@/app/studio/shop/actions";
+import { clearProductKohortLinkAction, createProductFileTicketAction, grantProductAction, saveProductAction, signProductImageAction } from "@/app/studio/shop/actions";
 import { ACCEPT_IMAGES, prepareImage, putImage } from "@/lib/client/images";
 import { formatNumber } from "@/lib/format";
 import {
@@ -39,6 +39,16 @@ async function uploadProductImage(file: File): Promise<string> {
   if (!signed.ok) throw new Error(signed.error);
   await putImage(signed.data.uploadUrl, img);
   return signed.data.publicUrl;
+}
+
+/** https URL the server will accept as a payment link (it re-checks); returns its URL object, or null. */
+function parseHttps(s: string): URL | null {
+  if (s.length > PRODUCT_LIMITS.paymentUrl || !/^https:\/\/\S+$/i.test(s)) return null;
+  try {
+    return new URL(s);
+  } catch {
+    return null;
+  }
 }
 
 const toNumber = (s: string) => Number(s.replace(/,/g, "").trim());
@@ -74,6 +84,11 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
     initial?.sample_path && initial.sample_name ? { path: initial.sample_path, name: initial.sample_name, size: initial.sample_size } : null,
   );
   const [sampleJob, setSampleJob] = React.useState<{ name: string; progress: number } | null>(null);
+  // Kohort payment link + the product's name on Kohort (matches webhooks to this product); the link id is learned by the server
+  const [paymentUrl, setPaymentUrl] = React.useState(initial?.payment_url ?? "");
+  const [kohortName, setKohortName] = React.useState(initial?.kohort_name ?? "");
+  const [linkId, setLinkId] = React.useState(initial?.kohort_link_id ?? null);
+  const [unlinking, setUnlinking] = React.useState(false);
   const [mode, setMode] = React.useState<"edit" | "preview">("edit");
   const [saving, setSaving] = React.useState<null | "draft" | "published">(null);
   const [imgBusy, setImgBusy] = React.useState(false);
@@ -115,12 +130,19 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
   const descOk = description.length <= PRODUCT_LIMITS.description;
   const off = priceOk && compareNum && compareOk ? discountPercent(priceNum, compareNum) : 0;
   const uploading = !!fileJob || !!sampleJob || imgBusy;
+  const payUrl = paymentUrl.trim();
+  const payParsed = payUrl ? parseHttps(payUrl) : null;
+  const payUrlOk = !payUrl || !!payParsed;
+  const payHostOdd = !!payParsed && !/(^|\.)kohort\.me$/i.test(payParsed.hostname);
+  const kohortNameOk = kohortName.length <= PRODUCT_LIMITS.kohortName;
 
   const save = async (next: "draft" | "published") => {
     if (!titleOk) return toast("ใส่ชื่อสินค้าก่อน");
     if (!priceOk) return toast("ใส่ราคาที่มากกว่า 0 บาท");
     if (!compareOk) return toast("ราคาก่อนลดต้องมากกว่าราคาขาย");
     if (!descOk) return toast("รายละเอียดยาวเกินไป");
+    if (!payUrlOk) return toast("ลิงก์ชำระเงินต้องขึ้นต้นด้วย https://");
+    if (!kohortNameOk) return toast(`ชื่อสินค้าบน Kohort ยาวเกิน ${PRODUCT_LIMITS.kohortName} ตัวอักษร`);
     if (next === "published") {
       if (type === "course" && !playlistId) return toast("เลือก Playlist ของคอร์สก่อนเผยแพร่");
       if (type !== "course" && !file) return toast("อัปโหลดไฟล์สินค้าก่อนเผยแพร่");
@@ -145,6 +167,8 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
       sample_path: sample?.path ?? null,
       sample_name: sample?.name ?? null,
       sample_size: sample?.size ?? null,
+      payment_url: payUrl,
+      kohort_name: kohortName,
     });
     setSaving(null);
     if (!r.ok) return toast(r.error);
@@ -228,6 +252,16 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
       sampleUp.current = null;
       setSampleJob(null);
     }
+  };
+
+  const unlink = async () => {
+    setUnlinking(true);
+    const r = await clearProductKohortLinkAction(id);
+    setUnlinking(false);
+    if (!r.ok) return toast(r.error);
+    setLinkId(null);
+    toast("ล้างการผูกแล้ว");
+    router.refresh();
   };
 
   const isPublished = status === "published" && !!initial && initial.status === "published";
@@ -432,6 +466,48 @@ export function ProductEditor({ initial, playlists, purchases }: { initial?: Pro
               {!sample && initial?.sample_path && <p className="t-caption mt-2 text-member">เอาไฟล์ตัวอย่างออกแล้ว กด “บันทึก” ด้านบนเพื่อให้มีผล</p>}
               {saved && initial?.sample_name && <p className="t-meta tnum mt-2">โหลดไปแล้ว {formatNumber(initial.sample_downloads)} ครั้ง</p>}
             </div>
+          </section>
+
+          {/* ───── Payment (Kohort) ───── */}
+          <section className="rounded-[16px] border border-border bg-surface p-5">
+            <h3 className="text-[15px] font-semibold">การชำระเงิน (Kohort)</h3>
+            <p className="t-meta mt-1">ปุ่มซื้อในเว็บจะพาลูกค้าไปลิงก์นี้ เมื่อ Kohort แจ้งว่าจ่ายแล้ว ระบบเปิดสิทธิ์ให้เองตามอีเมลของบัญชี</p>
+            <div className="mt-4 space-y-4">
+              <Field label="ลิงก์ชำระเงิน" hint={!payUrlOk ? "ต้องขึ้นต้นด้วย https:// และยาวไม่เกิน 500 ตัวอักษร" : payHostOdd ? "ลิงก์นี้ไม่ใช่ kohort.me ตรวจอีกครั้งว่าใส่ถูกอัน" : undefined}>
+                <input
+                  type="url"
+                  value={paymentUrl}
+                  onChange={(e) => touch(setPaymentUrl)(e.target.value)}
+                  placeholder="https://kohort.me/pay/..."
+                  autoComplete="off"
+                  className={cn(inputClass, !payUrlOk && "border-danger/60")}
+                />
+              </Field>
+              <Field label="ชื่อสินค้าบน Kohort" counter={`${kohortName.length}/${PRODUCT_LIMITS.kohortName}`} hint="ต้องตรงกับชื่อสินค้าที่ตั้งใน Kohort ทุกตัวอักษร ระบบใช้ชื่อนี้จับคู่การจ่ายเงินกับสินค้า">
+                <input
+                  value={kohortName}
+                  onChange={(e) => touch(setKohortName)(e.target.value)}
+                  placeholder={title.trim() || "ชื่อสินค้า"}
+                  autoComplete="off"
+                  className={cn(inputClass, !kohortNameOk && "border-danger/60")}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+              {linkId ? (
+                <>
+                  <span className="text-success">✓ ผูกกับลิงก์ Kohort แล้ว (จับคู่อัตโนมัติจากการจ่ายครั้งแรก)</span>
+                  <Button type="button" size="sm" variant="ghost" onClick={unlink} disabled={unlinking}>
+                    {unlinking && <Loader2 className="animate-spin" />} ล้างการผูก
+                  </Button>
+                </>
+              ) : (
+                <span className="text-text-2">ยังไม่ผูก — จะผูกให้เองเมื่อมีคนจ่ายครั้งแรก</span>
+              )}
+            </div>
+            <p className="t-caption mt-3 text-text-2">
+              ราคาบน Kohort ต้องเท่ากับราคาขายในเว็บ ({priceOk ? formatNumber(priceNum) : "—"} บาท) ไม่งั้นระบบจะไม่เปิดสิทธิ์และบันทึกไว้ให้ตรวจ
+            </p>
           </section>
 
           {/* ───── Description ───── */}

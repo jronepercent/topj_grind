@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { EllipsisVertical, ExternalLink, Pencil, Plus, ShoppingBag, Star, StarOff, Trash2 } from "lucide-react";
+import { EllipsisVertical, ExternalLink, Pencil, Plus, ShoppingBag, Star, StarOff, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
@@ -17,7 +17,16 @@ import { cn } from "@/lib/utils";
 
 type Filter = "all" | "published" | "draft";
 
-export function ShopManager({ rows, purchases }: { rows: ProductAdminRow[]; purchases: StudioPurchaseRow[] }) {
+export function ShopManager({
+  rows,
+  purchases,
+  hasFallbackPaymentUrl,
+}: {
+  rows: ProductAdminRow[];
+  purchases: StudioPurchaseRow[];
+  /** env PAYMENT_URL is set, so a product without its own payment link can still be bought. */
+  hasFallbackPaymentUrl: boolean;
+}) {
   const router = useRouter();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [del, setDel] = React.useState<ProductAdminRow | null>(null);
@@ -95,6 +104,11 @@ export function ShopManager({ rows, purchases }: { rows: ProductAdminRow[]; purc
                         {r.is_featured && (
                           <span className="inline-flex items-center gap-1 font-medium text-text">
                             <Star className="size-3" /> แนะนำ
+                          </span>
+                        )}
+                        {r.status === "published" && !r.payment_url && !hasFallbackPaymentUrl && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-[12px] font-medium text-danger">
+                            <TriangleAlert className="size-3" aria-hidden /> ยังไม่มีลิงก์ชำระเงิน
                           </span>
                         )}
                         {r.sample_name && <span>ตัวอย่างฟรี · โหลด {formatNumber(r.sample_downloads)}</span>}

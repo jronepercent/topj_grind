@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { rateLimit } from "@/lib/server/auth";
-import { fixProductAmount, logRejectedKohort, logUnmatchedKohort, normalizeKohort, parseKohortBody } from "@/lib/server/kohort";
+import { fixProductAmount, learnKohortLink, loadKohortProducts, logRejectedKohort, logUnmatchedKohort, normalizeKohort, parseKohortBody } from "@/lib/server/kohort";
 import { applyPayment, applyPurchase } from "@/lib/server/mutations";
 
 export const dynamic = "force-dynamic";
@@ -95,7 +95,15 @@ export async function POST(req: Request) {
   if (!parsed && !Object.keys(query).length) return NextResponse.json({ ok: false, error: "unparseable body" }, { status: 400 });
   const body = parsed ?? {};
 
-  const { payload, raw, referenceGenerated, unmatched } = normalizeKohort(body, query);
+  let products;
+  try {
+    products = await loadKohortProducts();
+  } catch (e) {
+    console.error("kohort webhook: could not load products", e);
+    return NextResponse.json({ ok: false, error: "server error" }, { status: 500 });
+  }
+  const { payload, raw, referenceGenerated, unmatched, learn } = normalizeKohort(body, query, Date.now(), products);
+  if (learn) await learnKohortLink(learn.product_id, learn.link_id);
   const summary = `ref=${payload.reference.slice(0, 24)}${referenceGenerated ? "(generated)" : ""} email=${maskEmail(payload.email)} amount=${payload.amount} ${
     payload.product_id ? `product=${payload.product_id}` : `plan=${payload.plan ?? "?"}`
   } method=${payload.method}`;

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BookOpen, Check, ChevronLeft, Download, FileDown, GraduationCap, Pencil } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
-import { getProduct } from "@/lib/server/shop";
-import { getPlaylist } from "@/lib/server/queries";
+import { productCheckoutMode } from "@/lib/server/payments";
+import { getProduct, productPaymentUrl } from "@/lib/server/shop";
+import { getPlaylist, siteSettings } from "@/lib/server/queries";
 import { ProductGallery } from "@/components/shop/product-gallery";
 import { PriceTag } from "@/components/shop/product-card";
 import { Markdown } from "@/components/community/markdown";
@@ -14,6 +15,21 @@ import { productJsonLd, productMetadata } from "@/lib/seo";
 import { PRODUCT_TYPE_LABEL, SHOP_FAQ, deliveryInfo, discountPercent, formatBaht, formatFileSize, productCheckoutHref, productHref, productSampleHref } from "@/lib/shop";
 
 type Props = { params: Promise<{ id: string }> };
+
+/** “ทักเราทาง LINE ได้เลย” — LINE links to the channel's OA when site settings has one. */
+const lineNote = (line: string | null) => (
+  <>
+    ทักเราทาง{" "}
+    {line ? (
+      <a href={line} target="_blank" rel="noopener noreferrer" className="font-medium text-text underline underline-offset-4">
+        LINE
+      </a>
+    ) : (
+      "LINE"
+    )}{" "}
+    ได้เลย
+  </>
+);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -35,16 +51,27 @@ export default async function ProductPage({ params }: Props) {
   const gets = [...info.gets];
   if (playlist) gets.unshift(`${formatNumber(playlist.item_count)} ตอน · ${formatLongDuration(playlist.total_sec)}`);
 
+  // can_buy: the product has its own payment link (or the PAYMENT_URL fallback exists). The link itself never leaves the server.
+  const canBuy = p.owned || !published || productCheckoutMode(await productPaymentUrl(p.id)) !== "closed";
+  const line = canBuy ? null : ((await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null);
+
   const buy = p.owned ? (
     <Button asChild variant="inverse" size="lg" className="h-14 w-full text-[16px]">
       <Link href="/library?tab=purchases">
         <Check strokeWidth={2.25} /> เปิดในคลัง
       </Link>
     </Button>
-  ) : published ? (
+  ) : published && canBuy ? (
     <Button asChild variant="primary" size="lg" className="h-14 w-full text-[16px]">
       <Link href={productCheckoutHref(p.id)}>ซื้อเลย · {formatBaht(p.price_thb)}</Link>
     </Button>
+  ) : published ? (
+    <div>
+      <Button variant="primary" size="lg" className="h-14 w-full text-[16px]" disabled>
+        ยังไม่เปิดให้ซื้อออนไลน์
+      </Button>
+      <p className="t-meta mt-2 text-center">{lineNote(line)}</p>
+    </div>
   ) : null;
 
   // Free sample: signed-in users download it straight away; guests are sent to sign up and come back here.
@@ -183,11 +210,23 @@ export default async function ProductPage({ params }: Props) {
           <div className="mx-auto flex max-w-[640px] items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1 leading-tight">
               <p className="tnum truncate text-[17px] font-semibold">{formatBaht(p.price_thb)}</p>
-              <p className="t-meta truncate">{p.owned ? "คุณเป็นเจ้าของแล้ว" : "จ่ายครั้งเดียว"}</p>
+              <p className="t-meta truncate">{p.owned ? "คุณเป็นเจ้าของแล้ว" : canBuy ? "จ่ายครั้งเดียว" : "ยังไม่เปิดให้ซื้อออนไลน์"}</p>
             </div>
-            <Button asChild variant={p.owned ? "inverse" : "primary"} size="lg" className="shrink-0">
-              <Link href={p.owned ? "/library?tab=purchases" : productCheckoutHref(p.id)}>{p.owned ? "เปิดในคลัง" : "ซื้อเลย"}</Link>
-            </Button>
+            {canBuy ? (
+              <Button asChild variant={p.owned ? "inverse" : "primary"} size="lg" className="shrink-0">
+                <Link href={p.owned ? "/library?tab=purchases" : productCheckoutHref(p.id)}>{p.owned ? "เปิดในคลัง" : "ซื้อเลย"}</Link>
+              </Button>
+            ) : line ? (
+              <Button asChild variant="primary" size="lg" className="shrink-0">
+                <a href={line} target="_blank" rel="noopener noreferrer">
+                  ทักทาง LINE
+                </a>
+              </Button>
+            ) : (
+              <Button variant="primary" size="lg" className="shrink-0" disabled>
+                ยังไม่เปิดขาย
+              </Button>
+            )}
           </div>
         </div>
       )}

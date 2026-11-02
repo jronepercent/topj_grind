@@ -2,7 +2,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CreditCard, FlaskConical, Lock, QrCode, ShoppingBag } from "lucide-react";
+import { AlertCircle, CreditCard, FlaskConical, Lock, Mail, QrCode, ShoppingBag } from "lucide-react";
 import { startProductCheckoutAction } from "@/app/(site)/shop/[id]/checkout/actions";
 import { Button } from "@/components/ui/button";
 import { CARD_NETWORKS, DEFAULT_METHOD, METHODS, type CheckoutMethod } from "@/lib/plans";
@@ -23,11 +23,17 @@ export function ProductCheckoutForm({
   mode,
   from,
   demoEmail,
+  payEmail,
+  lineUrl,
 }: {
   product: ProductCardData;
   mode: "live" | "demo" | "closed";
   from: string | null;
   demoEmail: string | null;
+  /** The signed-in viewer's own email, shown only when paying happens on an external page (which matches the payment to the account by email). */
+  payEmail: string | null;
+  /** The channel's LINE OA link (site settings → socials), offered when this product can't be bought online. */
+  lineUrl: string | null;
 }) {
   const router = useRouter();
   const [method, setMethod] = React.useState<CheckoutMethod>(DEFAULT_METHOD);
@@ -174,8 +180,18 @@ export function ProductCheckoutForm({
           <div role="status" className="mt-4 flex gap-3 rounded-[14px] border border-border-strong bg-surface p-4 text-[14px]">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-text-2" strokeWidth={1.75} aria-hidden />
             <div>
-              <p className="font-semibold">ระบบชำระเงินยังไม่เปิด</p>
-              <p className="t-meta mt-0.5">เรากำลังเตรียมระบบชำระเงิน กลับมาใหม่เร็วๆ นี้ ยังไม่มีการตัดเงินใดๆ</p>
+              <p className="font-semibold">ยังไม่เปิดให้ซื้อออนไลน์</p>
+              <p className="t-meta mt-0.5">
+                ทักเราทาง{" "}
+                {lineUrl ? (
+                  <a href={lineUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-text underline underline-offset-4">
+                    LINE
+                  </a>
+                ) : (
+                  "LINE"
+                )}{" "}
+                ได้เลย ยังไม่มีการตัดเงินใดๆ
+              </p>
             </div>
           </div>
         )}
@@ -184,6 +200,15 @@ export function ProductCheckoutForm({
           <div role="alert" className="mt-4 flex gap-3 rounded-[14px] border border-danger/40 bg-danger/10 p-4 text-[14px]">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" strokeWidth={1.75} aria-hidden />
             <p>{error}</p>
+          </div>
+        )}
+
+        {payEmail && !closed && (
+          <div className="mt-4 flex gap-3 rounded-[14px] border border-member/40 bg-member/10 p-4 text-[14px]">
+            <Mail className="mt-0.5 size-5 shrink-0 text-member" strokeWidth={1.75} aria-hidden />
+            <p>
+              ใช้อีเมลเดียวกับบัญชีนี้ (<strong className="break-all font-semibold">{payEmail}</strong>) ตอนชำระเงิน ระบบจะเปิดสิทธิ์ดาวน์โหลดให้อัตโนมัติ
+            </p>
           </div>
         )}
 

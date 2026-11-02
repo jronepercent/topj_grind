@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/supabase/clients";
 import { HttpError } from "./auth";
 import { audit } from "./mutations";
 import { isMissingRelation, isUuid } from "./queries";
+import { normKohortText } from "@/lib/kohort-match";
 import {
   PRODUCT_LIMITS,
   isProductType,
@@ -31,11 +32,11 @@ export const DOWNLOAD_TTL = 60;
 // sample_path (the free sample's object) is, like file_path, never selected here — only its display name (non-null = has a sample) and size.
 const CARD_COLS = "id, kind, product_type, title, subtitle, cover_url, price_thb, compare_at_thb, is_featured, sample_name";
 const PUBLIC_COLS = `${CARD_COLS}, description, images, status, file_name, file_size, sample_size, course_playlist_id, created_at, updated_at`;
-const ADMIN_COLS = `${PUBLIC_COLS}, position, stock, deleted_at`;
+const ADMIN_COLS = `${PUBLIC_COLS}, position, stock, deleted_at, payment_url, kohort_name, kohort_link_id`;
 
 type CardRow = Omit<ProductCardData, "owned" | "has_sample" | "price_thb" | "compare_at_thb"> & { price_thb: number | string; compare_at_thb: number | string | null; sample_name: string | null };
 type PublicRow = CardRow & Omit<ProductPublic, keyof ProductCardData | "has_file" | "sample_name" | "sample_size"> & { file_size: number | string | null; sample_size: number | string | null };
-type AdminRowDb = PublicRow & { position: number; stock: number | null; deleted_at: string | null };
+type AdminRowDb = PublicRow & { position: number; stock: number | null; deleted_at: string | null; payment_url: string | null; kohort_name: string | null; kohort_link_id: string | null };
 
 const num = (v: number | string) => Number(v);
 
@@ -151,6 +152,20 @@ export async function hasPurchased(userId: string | null | undefined, productId:
   return (await ownedProductIds(userId, [productId])).has(productId);
 }
 
+/**
+ * The product's own payment link (products.payment_url), for the checkout redirect and the “can this be bought online” check.
+ * Server-only on purpose: pages pass the browser a boolean, never the link. null = none set — also when migration 0017 is not applied yet.
+ */
+export async function productPaymentUrl(productId: string): Promise<string | null> {
+  if (!isUuid(productId)) return null;
+  const { data, error } = await adminDb().from("products").select("payment_url").eq("id", productId).is("deleted_at", null).maybeSingle();
+  if (error) {
+    if (error.code !== "42703" && error.code !== "PGRST204" && !isMissingRelation(error)) console.error(`product payment url: ${error.message}`);
+    return null;
+  }
+  return (data as { payment_url: string | null } | null)?.payment_url?.trim() || null;
+}
+
 /** The signed-in user's paid purchases, newest first (including products that were unpublished later — they keep access). */
 export async function myPurchases(userId: string): Promise<PurchaseView[]> {
   const res = await adminDb()
@@ -248,7 +263,17 @@ export async function studioProducts(): Promise<ProductAdminRow[]> {
   const res = await adminDb().from("products").select(ADMIN_COLS).is("deleted_at", null).order("created_at", { ascending: false });
   const rows = tolerate(res as unknown as { data: AdminRowDb[] | null; error: { code?: string; message: string } | null }, [], "studio products");
   const [sales, samples] = await Promise.all([salesByProduct(), sampleDownloadsByProduct()]);
-  return rows.map((r) => ({ ...full(r), position: r.position, stock: r.stock, deleted_at: r.deleted_at, sales_count: sales.get(r.id) ?? 0, sample_downloads: samples.get(r.id) ?? 0 }));
+  return rows.map((r) => ({
+    ...full(r),
+    position: r.position,
+    stock: r.stock,
+    deleted_at: r.deleted_at,
+    payment_url: r.payment_url,
+    kohort_name: r.kohort_name,
+    kohort_link_id: r.kohort_link_id,
+    sales_count: sales.get(r.id) ?? 0,
+    sample_downloads: samples.get(r.id) ?? 0,
+  }));
 }
 
 export async function studioProduct(id: string): Promise<ProductAdminFull | null> {
@@ -262,6 +287,9 @@ export async function studioProduct(id: string): Promise<ProductAdminFull | null
     position: row.position,
     stock: row.stock,
     deleted_at: row.deleted_at,
+    payment_url: row.payment_url,
+    kohort_name: row.kohort_name,
+    kohort_link_id: row.kohort_link_id,
     sales_count: sales.get(id) ?? 0,
     sample_downloads: samples.get(id) ?? 0,
     file_path: row.file_path,
@@ -290,6 +318,9 @@ export interface ProductInput {
   sample_path: string | null;
   sample_name: string | null;
   sample_size: number | null;
+  /** Kohort payment link (https) and the product's name on Kohort — see 0017_product_payment_links.sql. Both optional. */
+  payment_url: string;
+  kohort_name: string;
 }
 
 const money = (v: unknown) => Math.round(Number(v) * 100) / 100;
@@ -299,6 +330,22 @@ function cleanUrl(v: unknown, what: string): string | null {
   if (v == null || v === "") return null;
   const s = String(v).trim();
   if (s.toLowerCase().startsWith("data:") || !HTTP_URL.test(s) || s.length > 2000) throw new HttpError(400, `ลิงก์${what}ไม่ถูกต้อง`);
+  return s;
+}
+
+/** Kohort payment link: https only (the checkout redirects the buyer there), 500 characters at most. Empty = none. */
+function cleanPaymentUrl(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  let ok = s.length <= PRODUCT_LIMITS.paymentUrl && /^https:\/\/\S+$/i.test(s);
+  if (ok) {
+    try {
+      new URL(s);
+    } catch {
+      ok = false;
+    }
+  }
+  if (!ok) throw new HttpError(400, `ลิงก์ชำระเงินต้องขึ้นต้นด้วย https:// และยาวไม่เกิน ${PRODUCT_LIMITS.paymentUrl} ตัวอักษร`);
   return s;
 }
 
@@ -361,13 +408,26 @@ export async function saveProduct(admin: Viewer, input: ProductInput): Promise<{
     playlistId = data.id as string;
   }
 
+  const paymentUrl = cleanPaymentUrl(input.payment_url);
+  const kohortName = String(input.kohort_name ?? "").replace(/\s+/g, " ").trim();
+  if (kohortName.length > PRODUCT_LIMITS.kohortName) throw new HttpError(400, `ชื่อสินค้าบน Kohort ยาวเกิน ${PRODUCT_LIMITS.kohortName} ตัวอักษร`);
+
   const db = adminDb();
-  const existingRes = await db.from("products").select("id, file_path, sample_path, status").eq("id", id).maybeSingle();
+  const existingRes = await db.from("products").select("id, file_path, sample_path, status, payment_url").eq("id", id).maybeSingle();
   if (existingRes.error) {
     if (isMissingRelation(existingRes.error)) throw new HttpError(503, "ยังไม่ได้เปิดใช้ระบบร้านค้า (ต้องรัน migration 0013_shop และ 0016_product_samples ก่อน)");
+    if (existingRes.error.code === "42703") throw new HttpError(503, "ยังไม่ได้อัปเดตฐานข้อมูล (ต้องรัน migration 0017_product_payment_links ก่อน)");
     throw new Error(`product lookup: ${existingRes.error.message}`);
   }
-  const existing = existingRes.data as { id: string; file_path: string | null; sample_path: string | null; status: string } | null;
+  const existing = existingRes.data as { id: string; file_path: string | null; sample_path: string | null; status: string; payment_url: string | null } | null;
+
+  // Two products with the same Kohort name could not be told apart when a payment arrives, so the name must be unique.
+  if (kohortName) {
+    const others = await db.from("products").select("id, title, kohort_name").neq("id", id).is("deleted_at", null).not("kohort_name", "is", null);
+    if (others.error) throw new Error(`kohort name check: ${others.error.message}`);
+    const clash = (others.data ?? []).find((o) => normKohortText(o.kohort_name as string) === normKohortText(kohortName));
+    if (clash) throw new HttpError(409, `ชื่อสินค้าบน Kohort นี้ใช้กับสินค้า “${clash.title as string}” อยู่แล้ว ตั้งชื่อให้ต่างกัน ไม่งั้นระบบจับคู่การจ่ายเงินไม่ได้`);
+  }
 
   // File: must live in this product's folder and really exist in the private bucket.
   let filePath = input.file_path ? String(input.file_path) : null;
@@ -431,6 +491,10 @@ export async function saveProduct(admin: Viewer, input: ProductInput): Promise<{
     sample_path: samplePath,
     sample_name: sampleName,
     sample_size: sampleSize,
+    payment_url: paymentUrl,
+    kohort_name: kohortName || null,
+    // Swapping one payment link for another is a different Kohort link: forget the learned id so the new one is learned from its first payment.
+    ...(existing?.payment_url && existing.payment_url !== paymentUrl ? { kohort_link_id: null } : {}),
     updated_at: now,
   };
   if (existing) {
@@ -457,6 +521,15 @@ export async function deleteProduct(admin: Viewer, id: string) {
   if (error) throw new Error(`delete product: ${error.message}`);
   await audit(admin.id, "product.delete", "product", id);
   refreshShop(id);
+}
+
+/** “ล้างการผูก”: forget the learned Kohort link id (the next name-matched payment learns it again). */
+export async function clearProductKohortLink(admin: Viewer, id: string) {
+  if (!isUuid(id)) throw new HttpError(404, "ไม่พบสินค้า");
+  const { error } = await adminDb().from("products").update({ kohort_link_id: null, updated_at: new Date().toISOString() }).eq("id", id).is("deleted_at", null);
+  if (error) throw new Error(`clear kohort link: ${error.message}`);
+  await audit(admin.id, "product.kohort_unlink", "product", id);
+  revalidatePath("/studio/shop");
 }
 
 export async function setProductFeatured(admin: Viewer, id: string, featured: boolean) {

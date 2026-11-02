@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/studio/ui";
 import { ShopManager } from "@/components/studio/shop-manager";
+import { hasGeneralPaymentUrl } from "@/lib/server/payments";
 import { studioProducts, studioPurchases } from "@/lib/server/shop";
 
 export const metadata = { title: "ร้านค้า" };
@@ -22,7 +23,7 @@ export default async function StudioShopPage() {
           </Button>
         }
       />
-      <ShopManager rows={rows} purchases={purchases} />
+      <ShopManager rows={rows} purchases={purchases} hasFallbackPaymentUrl={hasGeneralPaymentUrl()} />
     </div>
   );
 }

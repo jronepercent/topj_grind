@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
-import { checkoutMode } from "@/lib/server/payments";
+import { productCheckoutMode } from "@/lib/server/payments";
 import { siteSettings } from "@/lib/server/queries";
-import { getProduct } from "@/lib/server/shop";
+import { getProduct, productPaymentUrl } from "@/lib/server/shop";
 import { ProductSuccessPoller } from "@/components/shop/product-success-poller";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
@@ -66,7 +66,7 @@ export default async function ProductSuccessPage({
         alreadyOwned={!!product.owned}
         from={isSafePath(rawFrom) ? rawFrom : null}
         lineUrl={line}
-        demoEmail={checkoutMode() === "demo" ? viewer.email : null}
+        demoEmail={productCheckoutMode(await productPaymentUrl(id)) === "demo" ? viewer.email : null}
         method={method}
       />
     </div>
