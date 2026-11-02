@@ -20,6 +20,7 @@ const PRIMARY: NavItem[] = [
 ];
 const YOU: NavItem[] = [
   { href: "/library", label: "คลังของฉัน", icon: Library },
+  { href: "/library?tab=purchases", label: "สินค้าที่ซื้อ", icon: ShoppingBag },
   { href: "/library?tab=history", label: "ประวัติ", icon: History },
   { href: "/library?tab=later", label: "ดูภายหลัง", icon: Clock },
 ];

@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/supabase/clients";
 import { HttpError } from "./auth";
 import { audit } from "./mutations";
 import { isMissingRelation, isUuid } from "./queries";
+import { queuePurchaseEmail } from "./shop-email";
 import { normKohortText } from "@/lib/kohort-match";
 import {
   PRODUCT_LIMITS,
@@ -556,18 +557,22 @@ export async function grantProduct(admin: Viewer, productId: string, email: stri
   const { data: prod } = await db.from("products").select("id, title").eq("id", productId).is("deleted_at", null).maybeSingle();
   if (!prod) throw new HttpError(404, "ไม่พบสินค้า");
   if (await hasPurchased(userId, productId)) throw new HttpError(409, "ลูกค้าคนนี้มีสินค้านี้อยู่แล้ว");
-  const { error } = await db.rpc("apply_purchase", {
+  const reference = `MANUAL-${randomUUID()}`;
+  const { data: purchaseId, error } = await db.rpc("apply_purchase", {
     p_user_id: userId,
     p_product_id: productId,
     p_amount: 0,
     p_currency: "THB",
     p_method: "manual",
-    p_reference: `MANUAL-${randomUUID()}`,
+    p_reference: reference,
     p_paid_at: new Date().toISOString(),
     p_raw: { granted_by: admin.id, email: mail },
     p_manual: true,
   });
   if (error) throw new Error(`apply_purchase: ${error.message}`);
+  // The reference is brand new, so a purchase carrying it was created right now (a lost race returns someone else's row).
+  const created = purchaseId ? await db.from("purchases").select("reference").eq("id", purchaseId as string).maybeSingle() : null;
+  if (created?.data?.reference === reference) queuePurchaseEmail(purchaseId as string);
   const { data: prof } = await db.from("profiles").select("display_name").eq("id", userId).maybeSingle();
   await audit(admin.id, "product.grant", "user", userId, `${prod.title as string} · ${mail}`);
   revalidatePath("/studio/shop");

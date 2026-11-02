@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ImageUp, Link2, LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import { ChevronRight, ImageUp, Link2, LogOut, Monitor, Moon, ShoppingBag, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { setAutoplayAction, setEmailUpdatesAction, setThemeAction, updateProfileAction } from "@/app/actions";
 import { changePasswordAction, logoutAction } from "@/app/(auth)/auth-actions";
@@ -60,6 +60,17 @@ export function AccountView({
 }) {
   return (
     <div className="mt-6 space-y-4 pb-8">
+      <Link
+        href="/library?tab=purchases"
+        className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 transition-colors hover:bg-hover sm:p-5"
+      >
+        <ShoppingBag className="size-5 shrink-0" strokeWidth={1.75} aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold">สินค้าที่ซื้อ</span>
+          <span className="t-meta block">E-book คอร์ส และไฟล์ที่ซื้อไว้ ดาวน์โหลดซ้ำได้ตลอด</span>
+        </span>
+        <ChevronRight className="size-5 shrink-0 text-text-2" aria-hidden />
+      </Link>
       <ProfileCard viewer={viewer} />
       <Card title="อีเมล" description="ใช้สำหรับเข้าสู่ระบบและรับลิงก์ยืนยันต่างๆ">
         <input type="email" value={viewer.email} readOnly aria-label="อีเมล" className={cn(inputClass, "cursor-default text-text-2")} />

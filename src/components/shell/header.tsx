@@ -18,6 +18,7 @@ import {
   Newspaper,
   Plus,
   Search,
+  ShoppingBag,
   Sun,
   User,
 } from "lucide-react";
@@ -253,6 +254,11 @@ function UserMenu() {
         <DropdownItem asChild>
           <Link href="/library">
             <Library /> คลังของฉัน
+          </Link>
+        </DropdownItem>
+        <DropdownItem asChild>
+          <Link href="/library?tab=purchases">
+            <ShoppingBag /> สินค้าที่ซื้อ
           </Link>
         </DropdownItem>
         <DropdownSeparator />

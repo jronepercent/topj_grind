@@ -107,14 +107,58 @@ ${item.membersOnly ? `<p style="margin:0 0 20px;font-size:13px;font-weight:600;c
   return { html, text };
 }
 
+/** Transactional "ได้รับสินค้าแล้ว" email: no unsubscribe link (it is a receipt, not marketing). */
+export function renderPurchaseEmail(o: { name: string; email: string; title: string; amountLabel: string; url: string }) {
+  const url = httpUrl(o.url) ?? SITE;
+  const hint = `เข้าสู่ระบบด้วยอีเมลนี้ (${o.email}) แล้วสินค้าจะอยู่ในคลัง → ที่ซื้อแล้ว`;
+
+  const html = `<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>${esc(`ได้รับสินค้าแล้ว: ${o.title}`)}</title></head>
+<body style="margin:0;padding:0;background:${C.bg};color:${C.text};font-family:${FONT};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(o.title)} พร้อมให้ดาวน์โหลดในคลังของคุณแล้ว</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg};"><tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+<tr><td style="padding:0 4px 16px;font-size:18px;font-weight:700;letter-spacing:0.02em;color:${C.text};">TOPJ<span style="color:${C.accent};">_</span>GRIND</td></tr>
+<tr><td style="background:${C.card};border:1px solid ${C.border};border-radius:16px;padding:24px 24px 28px;">
+<p style="margin:0 0 6px;font-size:13px;color:${C.muted};">สวัสดี ${esc(o.name)}</p>
+<h1 style="margin:0 0 12px;font-size:22px;line-height:1.4;font-weight:700;color:${C.text};">ขอบคุณที่ซื้อสินค้ากับเรา</h1>
+<p style="margin:0 0 4px;font-size:16px;font-weight:600;color:${C.text};">${esc(o.title)}</p>
+<p style="margin:0 0 22px;font-size:14px;color:${C.gold};">${esc(o.amountLabel)}</p>
+<a href="${esc(url)}" style="display:inline-block;background:${C.accent};color:#ffffff;text-decoration:none;font-size:17px;font-weight:700;padding:16px 36px;border-radius:999px;">ดาวน์โหลดเลย</a>
+<p style="margin:20px 0 0;font-size:14px;line-height:1.7;color:${C.muted};">${esc(hint)}</p>
+</td></tr>
+<tr><td style="padding:20px 4px 0;font-size:12px;line-height:1.7;color:${C.muted};">
+อีเมลนี้ส่งเพราะมีการซื้อ/ได้รับสินค้าที่ TOPJ_GRIND ด้วยอีเมล ${esc(o.email)}<br>
+<a href="${esc(SITE)}" style="color:${C.muted};text-decoration:underline;">${esc(SITE.replace(/^https?:\/\//, ""))}</a>
+</td></tr>
+</table></td></tr></table></body></html>`;
+
+  const text = [
+    `สวัสดี ${o.name}`,
+    "",
+    "ขอบคุณที่ซื้อสินค้ากับเรา",
+    o.title,
+    o.amountLabel,
+    "",
+    `ดาวน์โหลดเลย: ${url}`,
+    hint,
+    "",
+    "--",
+    `อีเมลนี้ส่งเพราะมีการซื้อ/ได้รับสินค้าที่ TOPJ_GRIND ด้วยอีเมล ${o.email}`,
+    SITE,
+  ].join("\n");
+
+  return { html, text };
+}
+
 // ───────────────────────── Sender (Resend batch API) ─────────────────────────
 export interface OutgoingEmail {
   to: string;
   subject: string;
   html: string;
   text: string;
-  /** Personal one-click unsubscribe URL for the List-Unsubscribe header (RFC 8058) */
-  unsubscribe: string;
+  /** Personal one-click unsubscribe URL for the List-Unsubscribe header (RFC 8058). Omit for transactional mail. */
+  unsubscribe?: string;
 }
 
 export interface SendSummary {
@@ -176,7 +220,7 @@ export async function sendEmails(messages: OutgoingEmail[], opts: { idempotencyP
       subject: m.subject,
       html: m.html,
       text: m.text,
-      headers: { "List-Unsubscribe": `<${m.unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+      ...(m.unsubscribe ? { headers: { "List-Unsubscribe": `<${m.unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
     }));
     const key = `${opts.idempotencyPrefix}-${i / BATCH_SIZE}`;
     let r = await postBatch(payload, key);

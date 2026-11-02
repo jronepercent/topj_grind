@@ -66,6 +66,12 @@ export function ProductCard({
       {!row && p.subtitle && <p className="t-meta mt-0.5 line-clamp-1">{p.subtitle}</p>}
       <PriceTag price={p.price_thb} compareAt={p.compare_at_thb} className="mt-1.5" />
       {off > 0 && <span className="sr-only">ลด {off}%</span>}
+      {/* Owners: the whole card already opens the product page, where the download button is. This is the visible hint (a nested link is not allowed inside the card's <a>). */}
+      {p.owned && (
+        <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-hover px-2.5 py-1 text-[12px] font-semibold leading-4 group-hover:bg-border">
+          <Download className="size-3.5" strokeWidth={2.25} aria-hidden /> {p.product_type === "course" ? "เข้าเรียน" : "ดาวน์โหลด"}
+        </span>
+      )}
     </Link>
   );
 }

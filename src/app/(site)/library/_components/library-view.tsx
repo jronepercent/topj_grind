@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Download, ExternalLink, GraduationCap, Headphones, ShoppingBag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { clearHistoryAction, setSaveHistoryAction, toggleSaveAction } from "@/app/actions";
@@ -57,6 +58,12 @@ export function LibraryView(props: {
   const [clearing, setClearing] = React.useState(false);
 
   const historyItems = React.useMemo(() => groups.flatMap((g) => g.items), [groups]);
+
+  // A menu link to /library?tab=… while already on the library only changes the URL, not this component: follow it.
+  const urlTab = useSearchParams().get("tab");
+  React.useEffect(() => {
+    setTab((Object.keys(TAB_LABEL) as LibraryTab[]).find((t) => t === urlTab) ?? "overview");
+  }, [urlTab]);
 
   const go = React.useCallback((t: LibraryTab) => {
     setTab(t);
@@ -293,7 +300,7 @@ export function LibraryView(props: {
             body="E-book คอร์สเรียน และเทมเพลตที่คุณซื้อจากร้านค้าจะมารออยู่ที่นี่ ดาวน์โหลดซ้ำได้ตลอด"
             action={
               <Button asChild variant="inverse">
-                <Link href="/shop">ไปที่ร้านค้า</Link>
+                <Link href="/shop">ไปดูร้านค้า</Link>
               </Button>
             }
           />

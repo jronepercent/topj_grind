@@ -53,14 +53,50 @@ export default async function ProductPage({ params }: Props) {
 
   // can_buy: the product has its own payment link (or the PAYMENT_URL fallback exists). The link itself never leaves the server.
   const canBuy = p.owned || !published || productCheckoutMode(await productPaymentUrl(p.id)) !== "closed";
-  const line = canBuy ? null : ((await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null);
 
-  const buy = p.owned ? (
-    <Button asChild variant="inverse" size="lg" className="h-14 w-full text-[16px]">
-      <Link href="/library?tab=purchases">
-        <Check strokeWidth={2.25} /> เปิดในคลัง
-      </Link>
-    </Button>
+  // Owners (and admins) get the goods right here: download for files, the playlist for courses. A plain <a> for the download,
+  // because the route is a redirect to a signed URL and must never be prefetched.
+  const mine = !!p.owned || !!viewer?.is_admin;
+  const isCourse = p.product_type === "course" && !!p.course_playlist_id;
+  const ownerReady = isCourse || p.has_file;
+  const ownerNote = p.owned ? "คุณเป็นเจ้าของแล้ว · ดาวน์โหลดได้ไม่จำกัดครั้ง" : "ผู้ดูแลช่อง · ดาวน์โหลดได้ไม่จำกัดครั้ง";
+  const line = canBuy && !(mine && !ownerReady) ? null : ((await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null);
+  const ownerAction = (className: string, label: { go: string; wait: string }) =>
+    !ownerReady ? (
+      <Button variant="primary" size="lg" className={className} disabled>
+        {label.wait}
+      </Button>
+    ) : isCourse ? (
+      <Button asChild variant="primary" size="lg" className={className}>
+        <Link href={`/playlists/${p.course_playlist_id}`}>
+          <GraduationCap /> เข้าเรียน
+        </Link>
+      </Button>
+    ) : (
+      <Button asChild variant="primary" size="lg" className={className}>
+        <a href={`/api/shop/download/${p.id}`}>
+          <Download /> {label.go}
+        </a>
+      </Button>
+    );
+  const waitNote = (
+    <>
+      ไฟล์กำลังเตรียม{" "}
+      {line ? (
+        <a href={line} target="_blank" rel="noopener noreferrer" className="font-medium text-text underline underline-offset-4">
+          ทักเราทาง LINE
+        </a>
+      ) : (
+        "ทักเราทาง LINE"
+      )}
+    </>
+  );
+
+  const buy = mine ? (
+    <div>
+      {ownerAction("h-14 w-full text-[16px]", { go: "ดาวน์โหลด", wait: "ไฟล์กำลังเตรียม" })}
+      <p className="t-meta mt-2 text-center">{ownerReady ? ownerNote : waitNote}</p>
+    </div>
   ) : published && canBuy ? (
     <Button asChild variant="primary" size="lg" className="h-14 w-full text-[16px]">
       <Link href={productCheckoutHref(p.id)}>ซื้อเลย · {formatBaht(p.price_thb)}</Link>
@@ -209,12 +245,23 @@ export default async function ProductPage({ params }: Props) {
         <div className="glass tg-vv-bottom fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-30 border-t border-border sm:bottom-0 lg:hidden">
           <div className="mx-auto flex max-w-[640px] items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="tnum truncate text-[17px] font-semibold">{formatBaht(p.price_thb)}</p>
-              <p className="t-meta truncate">{p.owned ? "คุณเป็นเจ้าของแล้ว" : canBuy ? "จ่ายครั้งเดียว" : "ยังไม่เปิดให้ซื้อออนไลน์"}</p>
+              {mine ? (
+                <>
+                  <p className="truncate text-[15px] font-semibold">{p.owned ? "คุณเป็นเจ้าของแล้ว" : "ผู้ดูแลช่อง"}</p>
+                  <p className="t-meta truncate">{ownerReady ? "ดาวน์โหลดได้ไม่จำกัดครั้ง" : "ไฟล์กำลังเตรียม ทักเราทาง LINE"}</p>
+                </>
+              ) : (
+                <>
+                  <p className="tnum truncate text-[17px] font-semibold">{formatBaht(p.price_thb)}</p>
+                  <p className="t-meta truncate">{canBuy ? "จ่ายครั้งเดียว" : "ยังไม่เปิดให้ซื้อออนไลน์"}</p>
+                </>
+              )}
             </div>
-            {canBuy ? (
-              <Button asChild variant={p.owned ? "inverse" : "primary"} size="lg" className="shrink-0">
-                <Link href={p.owned ? "/library?tab=purchases" : productCheckoutHref(p.id)}>{p.owned ? "เปิดในคลัง" : "ซื้อเลย"}</Link>
+            {mine ? (
+              ownerAction("shrink-0", { go: "ดาวน์โหลด", wait: "เตรียมไฟล์" })
+            ) : canBuy ? (
+              <Button asChild variant="primary" size="lg" className="shrink-0">
+                <Link href={productCheckoutHref(p.id)}>ซื้อเลย</Link>
               </Button>
             ) : line ? (
               <Button asChild variant="primary" size="lg" className="shrink-0">

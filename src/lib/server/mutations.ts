@@ -4,6 +4,7 @@ import { adminDb, must, userDb } from "@/lib/supabase/clients";
 import { HttpError } from "./auth";
 import { CATALOG_TAG, getContentRow, isLive, isUuid } from "./queries";
 import { removeAudioObjects } from "@/lib/server/media";
+import { queuePurchaseEmail } from "./shop-email";
 import { contentHref, thaiDate } from "@/lib/format";
 import { COMPLETE_RATIO, viewThresholdSec } from "@/lib/view-rules";
 import { CURRENCY, PLANS, isPaymentMethod, isPlanCode, type PlanCode } from "@/lib/plans";
@@ -173,7 +174,8 @@ export async function applyPayment(p: PaymentPayload, raw: unknown): Promise<Pay
   return { status: 200, expires_at: data as string, duplicate };
 }
 
-export type PurchaseResult = { status: 200; purchase_id: string; duplicate: boolean } | { status: 404 | 400; error: string };
+/** `granted`: this call created the purchase (not a replay, not "already owned under another reference") — the signal to email the buyer. */
+export type PurchaseResult = { status: 200; purchase_id: string; duplicate: boolean; granted: boolean } | { status: 404 | 400; error: string };
 
 /**
  * Shop purchase confirmed by the payment gateway (webhook payload with `product_id`). Same rules as applyPayment:
@@ -238,7 +240,16 @@ export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<Pu
     p_manual: false,
   });
   if (error) throw new Error(`apply_purchase: ${error.message}`);
-  return { status: 200, purchase_id: data as string, duplicate };
+  const purchaseId = data as string;
+  // apply_purchase() returns the existing id for a replay AND for "already owns it under another reference".
+  // Only the row that carries THIS reference was created by this payment, so only that one is a fresh grant.
+  let granted = false;
+  if (!duplicate && purchaseId) {
+    const row = await db.from("purchases").select("reference").eq("id", purchaseId).maybeSingle();
+    granted = row.data?.reference === p.reference;
+  }
+  if (granted) queuePurchaseEmail(purchaseId);
+  return { status: 200, purchase_id: purchaseId, duplicate, granted };
 }
 
 export async function audit(adminId: string, action: string, target_type: string, target_id: string, note = "") {

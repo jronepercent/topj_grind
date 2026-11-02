@@ -98,6 +98,7 @@ export function ProductSuccessPoller({
           <h1 className="t-h1 mt-8">กำลังยืนยันการชำระเงิน…</h1>
           <p className="mt-3 text-[15px] font-medium">{product.title}</p>
           <p className="t-meta mt-2 max-w-sm">ปกติใช้เวลาไม่ถึง 1 นาที เปิดหน้านี้ค้างไว้ได้เลย เราจะอัปเดตให้อัตโนมัติ</p>
+          <p className="t-caption mt-3 max-w-sm text-text-2">ถ้ารอนานเกิน 2 นาที ตรวจว่าใช้อีเมลเดียวกับบัญชีนี้ตอนจ่ายเงิน หรือทักเราทาง LINE</p>
           <div className="mt-8 w-full max-w-[320px] space-y-2.5" aria-hidden>
             <div className="skeleton h-3 rounded-full" />
             <div className="skeleton mx-auto h-3 w-3/4 rounded-full" />
@@ -144,7 +145,7 @@ export function ProductSuccessPoller({
               </Button>
             ) : null}
             <Button asChild variant={isCourse || product.has_file ? "secondary" : "primary"} size="lg">
-              <Link href="/library?tab=purchases">เปิดในคลังของฉัน</Link>
+              <Link href="/library?tab=purchases">ดูในคลัง → ที่ซื้อแล้ว</Link>
             </Button>
             <Button asChild variant="ghost" size="lg">
               <Link href={dest ?? "/shop"}>{dest ? "กลับไปที่เดิม" : "เลือกซื้อสินค้าอื่น"}</Link>
@@ -162,6 +163,7 @@ export function ProductSuccessPoller({
           <p className="t-meta mt-2 max-w-sm">
             บางครั้งระบบชำระเงินใช้เวลานานกว่าปกติ ถ้าชำระแล้วแต่ของยังไม่เข้าคลัง ทักเราทาง LINE OA พร้อมแนบสลิป เราจะรีบตรวจสอบให้
           </p>
+          <p className="t-caption mt-3 max-w-sm text-text-2">ตรวจว่าใช้อีเมลเดียวกับบัญชีนี้ตอนจ่ายเงิน (ถ้าไม่ใช่ ทักเราทาง LINE พร้อมอีเมลที่ใช้จ่าย)</p>
           <div className="mt-8 flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button
               variant="inverse"
