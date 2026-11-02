@@ -228,6 +228,10 @@ export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<Pu
     return { status: 404, error: "user not found" };
   }
 
+  // apply_purchase() checks paid == price itself and knows nothing about coupons, so a Kohort coupon (paid + discount = price,
+  // already checked above) made it raise "amount mismatch" → the webhook answered 500 and nothing was granted or logged.
+  // With a discount the amount is ours to vouch for, so skip the database's check (p_manual) and record what was really paid.
+  const couponed = !duplicate && (Number(p.discount) || 0) > 0;
   const { data, error } = await db.rpc("apply_purchase", {
     p_user_id: userId,
     p_product_id: p.product_id,
@@ -237,9 +241,14 @@ export async function applyPurchase(p: PaymentPayload, raw: unknown): Promise<Pu
     p_reference: p.reference,
     p_paid_at: p.paid_at || nowIso(),
     p_raw: raw as object,
-    p_manual: false,
+    p_manual: couponed,
   });
-  if (error) throw new Error(`apply_purchase: ${error.message}`);
+  if (error) {
+    // The database's own refusals are a payment to look at, not a server failure: log them for Studio and answer 200.
+    if (error.code === "22023") return reject(`ยอดเงินไม่ตรงกับสินค้า (${prod.data.title}): ได้รับ ${p.amount} ${p.currency || ""} คาดว่า ${prod.data.price_thb} ${CURRENCY}`, "amount mismatch");
+    if (error.code === "P0002") return reject(`ไม่พบสินค้า ${p.product_id}`, "product not found");
+    throw new Error(`apply_purchase: ${error.message}`);
+  }
   const purchaseId = data as string;
   // apply_purchase() returns the existing id for a replay AND for "already owns it under another reference".
   // Only the row that carries THIS reference was created by this payment, so only that one is a fresh grant.
