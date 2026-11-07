@@ -188,7 +188,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
     >
       <div
         className={cn(
-          "sticky top-14 z-10 bg-black sm:static sm:bg-transparent lg:[grid-area:player]",
+          "sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-black sm:static sm:bg-transparent lg:[grid-area:player]",
           theater && "lg:bg-black",
         )}
       >

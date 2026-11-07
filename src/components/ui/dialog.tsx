@@ -54,8 +54,8 @@ export function SheetContent({
 }: React.ComponentProps<typeof D.Content> & { side?: "bottom" | "right" | "left"; title?: string }) {
   const pos = {
     bottom: "tg-sheet-up inset-x-0 bottom-0 max-h-[88dvh] rounded-t-[20px] safe-bottom",
-    right: "tg-sheet-left inset-y-0 right-0 w-full max-w-md",
-    left: "tg-sheet-right inset-y-0 left-0 w-72",
+    right: "tg-sheet-left inset-y-0 right-0 w-full max-w-md safe-top safe-bottom",
+    left: "tg-sheet-right inset-y-0 left-0 w-72 safe-top safe-bottom",
   }[side];
   return (
     <D.Portal>

@@ -13,7 +13,7 @@ export function CommunityTabs() {
   const pathname = usePathname();
   const onArticles = pathname.startsWith("/community/articles");
   return (
-    <div className="glass sticky top-14 z-30 border-b border-border">
+    <div className="glass sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-border">
       <div className="mx-auto flex max-w-[680px] justify-center px-4 py-2.5">
         <nav aria-label="ส่วนของชุมชน" className="grid w-full max-w-[360px] grid-cols-2 rounded-full bg-hover p-1">
           {TABS.map((t) => {

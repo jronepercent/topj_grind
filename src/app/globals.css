@@ -156,6 +156,8 @@ body {
 .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+/* Home-screen app (iOS standalone, black-translucent): the page runs under the status bar — push top bars below it. */
+.safe-top { padding-top: env(safe-area-inset-top); }
 /* Bottom-fixed bars follow the real screen bottom (see ViewportGuard). */
 .tg-vv-bottom {
   translate: 0 calc(var(--vv-shift, 0px) + var(--bars-drop, 0px));

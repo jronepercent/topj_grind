@@ -51,15 +51,15 @@ export function Header({ unread }: { unread: number }) {
   };
 
   return (
-    <header className="glass sticky top-0 z-40 h-14 border-b border-border">
+    <header className="glass safe-top sticky top-0 z-40 border-b border-border">
       {mobileSearch ? (
-        <div className="flex h-full items-center px-2">
+        <div className="flex h-14 items-center px-2">
           <React.Suspense>
             <SearchBox mobile onClose={() => setMobileSearch(false)} />
           </React.Suspense>
         </div>
       ) : (
-        <div className="flex h-full items-center gap-2 px-2 sm:px-4">
+        <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
           <button onClick={toggleNav} className="hidden rounded-full p-2 hover:bg-hover sm:inline-flex" aria-label="เมนู">
             <Menu className="size-[22px]" strokeWidth={1.75} />
           </button>

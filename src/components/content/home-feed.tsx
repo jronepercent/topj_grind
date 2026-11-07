@@ -62,7 +62,7 @@ export function HomeFeed({
 
   return (
     <>
-      <div id="feed-top" className="glass sticky top-14 z-20 -mx-4 border-b border-transparent px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div id="feed-top" className="glass sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 border-b border-transparent px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="no-scrollbar flex gap-2 overflow-x-auto" role="tablist" aria-label="กรองคอนเทนต์">
           {chips.map((c) => (
             <button

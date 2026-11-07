@@ -55,7 +55,7 @@ export function StudioShell({
   const pathname = usePathname();
   return (
     <div className="min-h-dvh bg-bg">
-      <header className="glass sticky top-0 z-40 border-b border-border">
+      <header className="glass safe-top sticky top-0 z-40 border-b border-border">
         <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
           <Logo href="/studio" />
           <span className="rounded-full border border-border-strong px-2 py-0.5 text-[12px] font-semibold leading-4 tracking-wide text-text-2">
