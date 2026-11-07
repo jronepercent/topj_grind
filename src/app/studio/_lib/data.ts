@@ -1,9 +1,20 @@
 import "server-only";
 import { adminDb } from "@/lib/supabase/clients";
 import { isActiveUntil } from "@/lib/server/auth";
-import { isLive } from "@/lib/server/queries";
-import type { CommentRow, ContentRow, PaymentMethod } from "@/lib/types";
-import type { DailyPoint, MemberRow, MemberStatus, PickItem, StudioComment, StudioContentRow } from "@/components/studio/types";
+import { isLive, isUuid } from "@/lib/server/queries";
+import type { CommentRow, ContentRow, ContentType, PaymentMethod } from "@/lib/types";
+import type { PlanCode } from "@/lib/plans";
+import type {
+  AuthProvider,
+  DailyPoint,
+  MemberDetail,
+  MemberRow,
+  MemberStatus,
+  OnboardingStage,
+  PickItem,
+  StudioComment,
+  StudioContentRow,
+} from "@/components/studio/types";
 
 export const DAY = 86_400_000;
 const BKK_OFFSET = 7 * 3_600_000; // Asia/Bangkok is UTC+7 all year (no DST)
@@ -314,52 +325,136 @@ export function memberStatus(expires_at: string | null, now = Date.now()): Membe
   return "active";
 }
 
-/** user id → email, from Supabase Auth (profiles has no email). */
-export async function authEmails(): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+export interface AuthUserLite {
+  email: string;
+  created_at: string;
+  last_sign_in_at: string | null;
+  provider: AuthProvider;
+  email_confirmed: boolean;
+}
+
+type AuthUserRaw = {
+  id: string;
+  email?: string | null;
+  created_at: string;
+  last_sign_in_at?: string | null;
+  email_confirmed_at?: string | null;
+  app_metadata?: { provider?: string; providers?: string[] } | null;
+  identities?: { provider: string }[] | null;
+};
+
+export function toAuthLite(u: AuthUserRaw): AuthUserLite {
+  const providers = [u.app_metadata?.provider, ...(u.app_metadata?.providers ?? []), ...(u.identities ?? []).map((i) => i.provider)];
+  return {
+    email: u.email ?? "",
+    created_at: u.created_at,
+    last_sign_in_at: u.last_sign_in_at ?? null,
+    provider: providers.includes("google") ? "google" : "email",
+    email_confirmed: !!u.email_confirmed_at,
+  };
+}
+
+/** user id → auth details (email, sign-up / last sign-in time, provider), from Supabase Auth (profiles has none of these). */
+export async function authUsers(): Promise<Map<string, AuthUserLite>> {
+  const out = new Map<string, AuthUserLite>();
   const perPage = 1000;
   for (let page = 1; ; page++) {
     const { data, error } = await adminDb().auth.admin.listUsers({ page, perPage });
     if (error) throw new Error(`auth users: ${error.message}`);
-    for (const u of data.users) out.set(u.id, u.email ?? "");
+    for (const u of data.users) out.set(u.id, toAuthLite(u));
     if (data.users.length < perPage) return out;
   }
 }
 
+/** user id → email, from Supabase Auth (profiles has no email). */
+export async function authEmails(): Promise<Map<string, string>> {
+  return new Map([...(await authUsers())].map(([id, u]) => [id, u.email]));
+}
+
+export const maxIso = (...xs: (string | null | undefined)[]) => {
+  let best: string | null = null;
+  for (const x of xs) if (x && (!best || new Date(x).getTime() > new Date(best).getTime())) best = x;
+  return best;
+};
+
 export async function memberRows(now = Date.now()): Promise<MemberRow[]> {
   const db = adminDb();
-  const [profiles, subs, pays, watches, emails] = await Promise.all([
-    fetchAll<ProfileLite>(
-      (from, to) => db.from("profiles").select("id, display_name, avatar_url, is_banned").neq("role", "admin").order("id").range(from, to),
+  const [profiles, subs, pays, purchases, watches, views, users, durations] = await Promise.all([
+    fetchAll<ProfileLite & { created_at: string; onboarding_stage: OnboardingStage | null; email_updates: boolean | null }>(
+      (from, to) =>
+        db
+          .from("profiles")
+          .select("id, display_name, avatar_url, is_banned, created_at, onboarding_stage, email_updates")
+          .neq("role", "admin")
+          .order("id")
+          .range(from, to),
       "profiles",
     ),
     fetchAll<{ user_id: string; expires_at: string | null; first_paid_at: string | null }>(
       (from, to) => db.from("subscriptions").select("user_id, expires_at, first_paid_at").order("user_id").range(from, to),
       "subscriptions",
     ),
-    fetchAll<{ user_id: string; method: PaymentMethod; paid_at: string }>(
-      (from, to) => db.from("payments").select("user_id, method, paid_at").order("paid_at", { ascending: false }).order("id").range(from, to),
+    fetchAll<{ user_id: string; method: PaymentMethod; paid_at: string; amount: number | string; plan: PlanCode | null }>(
+      (from, to) => db.from("payments").select("user_id, method, paid_at, amount, plan").order("paid_at", { ascending: false }).order("id").range(from, to),
       "payments",
     ),
-    fetchAll<{ user_id: string; updated_at: string }>(
-      (from, to) => db.from("watch_progress").select("user_id, updated_at").order("user_id").order("content_id").range(from, to),
+    fetchAll<{ user_id: string; amount: number | string }>(
+      (from, to) => db.from("purchases").select("user_id, amount").eq("status", "paid").order("id").range(from, to),
+      "purchases",
+    ),
+    fetchAll<{ user_id: string; content_id: string; position_sec: number; completed: boolean; updated_at: string }>(
+      (from, to) => db.from("watch_progress").select("user_id, content_id, position_sec, completed, updated_at").order("user_id").order("content_id").range(from, to),
       "watch progress",
     ),
-    authEmails(),
+    fetchAll<{ user_id: string; content_id: string; created_at: string }>(
+      (from, to) => db.from("views").select("user_id, content_id, created_at").not("user_id", "is", null).order("id").range(from, to),
+      "views",
+    ),
+    authUsers(),
+    fetchAll<{ id: string; duration_sec: number }>((from, to) => db.from("content").select("id, duration_sec").order("id").range(from, to), "content durations"),
   ]);
+  const duration = new Map(durations.map((c) => [c.id, Number(c.duration_sec || 0)]));
   const sub = new Map(subs.map((s) => [s.user_id, s]));
   const lastMethod = new Map<string, PaymentMethod>();
-  for (const p of pays) if (!lastMethod.has(p.user_id)) lastMethod.set(p.user_id, p.method); // newest first
-  const lastWatch = new Map<string, string>();
+  const lastPlan = new Map<string, PlanCode>();
+  const lifetime = new Map<string, number>();
+  for (const p of pays) {
+    // newest first
+    if (!lastMethod.has(p.user_id)) lastMethod.set(p.user_id, p.method);
+    if (p.plan && !lastPlan.has(p.user_id)) lastPlan.set(p.user_id, p.plan);
+    lifetime.set(p.user_id, (lifetime.get(p.user_id) ?? 0) + Number(p.amount || 0));
+  }
+  for (const p of purchases) lifetime.set(p.user_id, (lifetime.get(p.user_id) ?? 0) + Number(p.amount || 0));
+
+  // Estimated watch time: finished clips count their full length (position_sec is reset on completion), others their position.
+  const since7 = now - 7 * DAY;
+  const watch = new Map<string, { started: number; completed: number; last: string | null; sec: number; recentSec: number }>();
   for (const w of watches) {
-    const prev = lastWatch.get(w.user_id);
-    if (!prev || new Date(w.updated_at).getTime() > new Date(prev).getTime()) lastWatch.set(w.user_id, w.updated_at);
+    const cur = watch.get(w.user_id) ?? { started: 0, completed: 0, last: null, sec: 0, recentSec: 0 };
+    const sec = w.completed ? (duration.get(w.content_id) ?? 0) : Number(w.position_sec || 0);
+    cur.started++;
+    if (w.completed) cur.completed++;
+    cur.sec += sec;
+    if (new Date(w.updated_at).getTime() >= since7) cur.recentSec += sec;
+    cur.last = maxIso(cur.last, w.updated_at);
+    watch.set(w.user_id, cur);
+  }
+  const viewAgg = new Map<string, { last: string | null; recentClips: Set<string> }>();
+  for (const v of views) {
+    const cur = viewAgg.get(v.user_id) ?? { last: null, recentClips: new Set<string>() };
+    cur.last = maxIso(cur.last, v.created_at);
+    if (new Date(v.created_at).getTime() >= since7) cur.recentClips.add(v.content_id);
+    viewAgg.set(v.user_id, cur);
   }
 
   return profiles
-    .map((p) => {
+    .map((p): MemberRow => {
       const s = sub.get(p.id);
-      const email = emails.get(p.id) ?? "";
+      const u = users.get(p.id);
+      const email = u?.email ?? "";
+      const status = memberStatus(s?.expires_at ?? null, now);
+      const w = watch.get(p.id);
+      const v = viewAgg.get(p.id);
       return {
         id: p.id,
         display_name: p.display_name || email.split("@")[0],
@@ -368,9 +463,22 @@ export async function memberRows(now = Date.now()): Promise<MemberRow[]> {
         is_banned: p.is_banned,
         first_paid_at: s?.first_paid_at ?? null,
         expires_at: s?.expires_at ?? null,
-        status: memberStatus(s?.expires_at ?? null, now),
+        status,
         last_method: lastMethod.get(p.id) ?? null,
-        last_watch: lastWatch.get(p.id) ?? null,
+        last_watch: w?.last ?? null,
+        signed_up_at: u?.created_at ?? p.created_at,
+        last_sign_in_at: u?.last_sign_in_at ?? null,
+        provider: u?.provider ?? "email",
+        email_confirmed: u?.email_confirmed ?? false,
+        onboarding_stage: p.onboarding_stage,
+        email_updates: p.email_updates !== false,
+        plan: lastPlan.get(p.id) ?? null,
+        lifetime_thb: lifetime.get(p.id) ?? 0,
+        clips_started: w?.started ?? 0,
+        clips_completed: w?.completed ?? 0,
+        watch_sec: w?.sec ?? 0,
+        last_active: maxIso(w?.last, v?.last, u?.last_sign_in_at),
+        hot: (status === "never" || status === "expired") && ((v?.recentClips.size ?? 0) >= 3 || (w?.recentSec ?? 0) >= 1800),
       };
     })
     .sort((a, b) => {
@@ -400,7 +508,16 @@ export async function memberSummary(rows: MemberRow[], now = Date.now()) {
     "month revenue",
   );
   const revenue = monthPays.reduce((s, p) => s + Number(p.amount || 0), 0);
-  return { active: active.length, within7: within7.length, expiringThisMonth: expiringThisMonth.length, revenue };
+  return {
+    active: active.length,
+    within7: within7.length,
+    expiringThisMonth: expiringThisMonth.length,
+    revenue,
+    total: rows.length,
+    free: rows.filter((r) => r.status === "never").length,
+    new7: rows.filter((r) => now - new Date(r.signed_up_at).getTime() <= 7 * DAY).length,
+    hot: rows.filter((r) => r.hot).length,
+  };
 }
 
 /** Active (expires_at > now) and expiring-within-7-days counts, admins excluded. */
@@ -417,5 +534,142 @@ export async function membershipCounts(now = Date.now()) {
   return {
     members: rows.length,
     expiring7: rows.filter((s) => new Date(s.expires_at).getTime() - now <= 7 * DAY).length,
+  };
+}
+
+// ───────── One member (profile page) ─────────
+const countOf = (res: { count: number | null; error: { message: string } | null }, what: string) => {
+  if (res.error) throw new Error(`${what}: ${res.error.message}`);
+  return res.count ?? 0;
+};
+
+/** Full picture of one member, every query filtered by user id. null = no such profile. */
+export async function memberDetail(id: string, now = Date.now()): Promise<MemberDetail | null> {
+  const db = adminDb();
+  const [profileRes, authRes, subRes] = await Promise.all([
+    db.from("profiles").select("id, display_name, avatar_url, is_banned, created_at, onboarding_stage, email_updates").eq("id", id).maybeSingle(),
+    db.auth.admin.getUserById(id),
+    db.from("subscriptions").select("expires_at, first_paid_at").eq("user_id", id).maybeSingle(),
+  ]);
+  const profile = check<null | (ProfileLite & { created_at: string; onboarding_stage: OnboardingStage | null; email_updates: boolean | null })>(
+    { data: profileRes.data, error: profileRes.error },
+    "profile",
+  );
+  if (!profile) return null;
+  const au = authRes.data?.user ? toAuthLite(authRes.data.user) : null;
+  const sub = check<null | { expires_at: string | null; first_paid_at: string | null }>({ data: subRes.data, error: subRes.error }, "subscription");
+
+  const sinceViews = now - 30 * DAY;
+  const [payRes, purRes, sampleRes, wpRes, views, likes, saved, cmRes, postRes, pcCount, welcomeRes, notesRes, logRes] = await Promise.all([
+    db.from("payments").select("id, paid_at, plan, method, months, amount, reference").eq("user_id", id).order("paid_at", { ascending: false }),
+    db.from("purchases").select("id, product_id, amount, status, paid_at").eq("user_id", id).order("paid_at", { ascending: false }),
+    db.from("sample_downloads").select("id, product_id, created_at").eq("user_id", id).order("created_at", { ascending: false }),
+    db.from("watch_progress").select("content_id, position_sec, completed, updated_at").eq("user_id", id).order("updated_at", { ascending: false }).limit(300),
+    fetchAll<{ created_at: string }>(
+      (from, to) => db.from("views").select("created_at").eq("user_id", id).order("id").range(from, to),
+      "views",
+    ),
+    db.from("likes").select("content_id", { count: "exact", head: true }).eq("user_id", id),
+    db.from("saved").select("content_id", { count: "exact", head: true }).eq("user_id", id),
+    db.from("comments").select("id, body, created_at, content_id").eq("user_id", id).is("deleted_at", null).order("created_at", { ascending: false }).limit(10),
+    db.from("posts").select("id, body, created_at").eq("author_id", id).eq("kind", "community").is("deleted_at", null).order("created_at", { ascending: false }).limit(10),
+    db.from("post_comments").select("id", { count: "exact", head: true }).eq("user_id", id).is("deleted_at", null),
+    db.from("welcome_emails").select("step, sent_at").eq("user_id", id).order("step"),
+    db.from("member_notes").select("id, body, created_at, author_id").eq("user_id", id).order("created_at", { ascending: false }),
+    db
+      .from("admin_audit_log")
+      .select("id, admin_id, action, note, created_at")
+      .eq("target_type", "user")
+      .eq("target_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  const payments = check<{ id: string; paid_at: string; plan: PlanCode | null; method: PaymentMethod; months: number; amount: number | string; reference: string | null }[]>(payRes, "payments");
+  const purchases = check<{ id: string; product_id: string; amount: number | string; status: string; paid_at: string | null }[]>(purRes, "purchases");
+  const samples = check<{ id: string; product_id: string; created_at: string }[]>(sampleRes, "sample downloads");
+  const wps = check<{ content_id: string; position_sec: number; completed: boolean; updated_at: string }[]>(wpRes, "watch progress");
+  const comments = check<{ id: string; body: string; created_at: string; content_id: string }[]>(cmRes, "comments");
+  const posts = check<{ id: string; body: string; created_at: string }[]>(postRes, "posts");
+  const welcome = check<{ step: number; sent_at: string }[]>(welcomeRes, "welcome emails");
+  const logs = check<{ id: string; admin_id: string; action: string; note: string | null; created_at: string }[]>(logRes, "audit log");
+  const notesAvailable = !notesRes.error;
+  const notes = notesAvailable ? ((notesRes.data ?? []) as { id: string; body: string; created_at: string; author_id: string | null }[]) : [];
+
+  const [products, contents, people] = await Promise.all([
+    fetchIn<{ id: string; title: string }>([...purchases, ...samples].map((x) => x.product_id), (ids) => db.from("products").select("id, title").in("id", ids), "products"),
+    fetchIn<{ id: string; type: ContentType; title: string; thumbnail_url: string | null; duration_sec: number }>(
+      [...wps, ...comments].map((x) => x.content_id),
+      (ids) => db.from("content").select("id, type, title, thumbnail_url, duration_sec").in("id", ids),
+      "content",
+    ),
+    fetchIn<{ id: string; display_name: string }>(
+      [...logs.map((l) => l.admin_id), ...notes.map((n) => n.author_id ?? "")].filter(isUuid),
+      (ids) => db.from("profiles").select("id, display_name").in("id", ids),
+      "names",
+    ),
+  ]);
+  const productTitle = new Map(products.map((p) => [p.id, p.title]));
+  const content = new Map(contents.map((c) => [c.id, c]));
+  const name = new Map(people.map((p) => [p.id, p.display_name]));
+
+  // Views per Bangkok day, last 30 days.
+  const keys: string[] = [];
+  for (let i = 29; i >= 0; i--) keys.push(bkkDayKey(now - i * DAY));
+  const viewsByDay = new Map(keys.map((k) => [k, 0]));
+  const activeDays = new Set<string>();
+  for (const v of views) {
+    if (new Date(v.created_at).getTime() < sinceViews) continue;
+    const k = bkkDayKey(v.created_at);
+    activeDays.add(k);
+    if (viewsByDay.has(k)) viewsByDay.set(k, viewsByDay.get(k)! + 1);
+  }
+  const daily = keys.map((k) => ({ key: k, label: dayLabel(k), count: viewsByDay.get(k)! }));
+  // Estimated watch time from progress (finished clips count their full length).
+  const watchSec = wps.reduce((s, w) => s + (w.completed ? (content.get(w.content_id)?.duration_sec ?? 0) : Number(w.position_sec || 0)), 0);
+
+  const paidPurchases = purchases.filter((p) => p.status === "paid");
+  return {
+    id,
+    display_name: profile.display_name || (au?.email ?? "").split("@")[0] || "ผู้ใช้",
+    avatar_url: profile.avatar_url,
+    email: au?.email ?? "",
+    is_banned: profile.is_banned,
+    signed_up_at: au?.created_at ?? profile.created_at,
+    last_sign_in_at: au?.last_sign_in_at ?? null,
+    provider: au?.provider ?? "email",
+    email_confirmed: au?.email_confirmed ?? false,
+    onboarding_stage: profile.onboarding_stage,
+    email_updates: profile.email_updates !== false,
+    status: memberStatus(sub?.expires_at ?? null, now),
+    expires_at: sub?.expires_at ?? null,
+    first_paid_at: sub?.first_paid_at ?? null,
+    payments: payments.map((p) => ({ ...p, amount: Number(p.amount || 0) })),
+    purchases: purchases.map((p) => ({ id: p.id, title: productTitle.get(p.product_id) ?? "สินค้าที่ถูกลบ", amount: Number(p.amount || 0), status: p.status, paid_at: p.paid_at })),
+    samples: samples.map((s) => ({ id: s.id, title: productTitle.get(s.product_id) ?? "สินค้าที่ถูกลบ", created_at: s.created_at })),
+    watched: wps.flatMap((w) => {
+      const c = content.get(w.content_id);
+      return c
+        ? [{ content_id: w.content_id, type: c.type, title: c.title, thumbnail_url: c.thumbnail_url, duration_sec: c.duration_sec, position_sec: w.position_sec, completed: w.completed, updated_at: w.updated_at }]
+        : [];
+    }),
+    daily,
+    active_days_30: activeDays.size,
+    watch_sec: watchSec,
+    lifetime_thb: payments.reduce((s, p) => s + Number(p.amount || 0), 0) + paidPurchases.reduce((s, p) => s + Number(p.amount || 0), 0),
+    clips_started: wps.length,
+    clips_completed: wps.filter((w) => w.completed).length,
+    likes: countOf(likes, "likes"),
+    saved: countOf(saved, "saved"),
+    comments: comments.map((c) => {
+      const ct = content.get(c.content_id);
+      return { id: c.id, body: c.body, created_at: c.created_at, content_id: c.content_id, content_type: ct?.type ?? ("video" as ContentType), content_title: ct?.title ?? "คลิปที่ถูกลบ" };
+    }),
+    posts,
+    post_comment_count: countOf(pcCount, "post comments"),
+    welcome,
+    notes: notes.map((n) => ({ id: n.id, body: n.body, created_at: n.created_at, author: (n.author_id && name.get(n.author_id)) || "ผู้ดูแล" })),
+    notes_available: notesAvailable,
+    audit: logs.map((l) => ({ id: l.id, action: l.action, note: l.note ?? "", created_at: l.created_at, admin: name.get(l.admin_id) ?? "ผู้ดูแล" })),
   };
 }

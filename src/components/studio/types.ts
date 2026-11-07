@@ -6,7 +6,7 @@ import type {
   Visibility,
   ContentVisibility,
 } from "@/lib/types";
-import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
+import { PAYMENT_METHOD_LABEL, PLANS, type PlanCode } from "@/lib/plans";
 
 /** Plain, serializable shapes passed from Studio server pages to client components. */
 
@@ -95,6 +95,81 @@ export interface MemberRow {
   status: MemberStatus;
   last_method: PaymentMethod | null;
   last_watch: string | null;
+  /** Auth account creation (falls back to profiles.created_at). */
+  signed_up_at: string;
+  last_sign_in_at: string | null;
+  provider: AuthProvider;
+  email_confirmed: boolean;
+  onboarding_stage: OnboardingStage | null;
+  email_updates: boolean;
+  /** Plan of the newest payment that has one. */
+  plan: PlanCode | null;
+  /** Sum of payments + paid shop purchases, in THB. */
+  lifetime_thb: number;
+  clips_started: number;
+  clips_completed: number;
+  watch_sec: number;
+  /** Latest of watch progress, views and sign-in. */
+  last_active: string | null;
+  /** Not paying (never / expired) but watched a lot in the last 7 days. */
+  hot: boolean;
+}
+
+export type AuthProvider = "google" | "email";
+export type OnboardingStage = "idea" | "build" | "sell";
+
+export const ONBOARDING_STAGE_LABEL: Record<OnboardingStage, string> = {
+  idea: "มีไอเดีย",
+  build: "กำลังสร้าง",
+  sell: "กำลังขาย",
+};
+
+export const PROVIDER_LABEL: Record<AuthProvider, string> = { google: "Google", email: "อีเมล" };
+
+export const PLAN_LABEL: Record<PlanCode, string> = { monthly: PLANS.monthly.label, yearly: PLANS.yearly.label };
+
+export type MemberSegment = "all" | "paid" | "free" | "expiring" | "expired" | "quiet" | "hot";
+
+export const MEMBER_SEGMENTS: MemberSegment[] = ["all", "paid", "free", "expiring", "expired", "quiet", "hot"];
+
+export const SEGMENT_LABEL: Record<MemberSegment, string> = {
+  all: "ทั้งหมด",
+  paid: "จ่ายเงิน",
+  free: "บัญชีฟรี",
+  expiring: "ใกล้หมด",
+  expired: "หมดอายุ",
+  quiet: "เงียบหาย",
+  hot: "Lead ร้อน 🔥",
+};
+
+const QUIET_MS = 14 * 86_400_000;
+
+export function inSegment(r: MemberRow, seg: MemberSegment, now = Date.now()): boolean {
+  switch (seg) {
+    case "all":
+      return true;
+    case "paid":
+      return r.status === "active" || r.status === "expiring";
+    case "free":
+      return r.status === "never";
+    case "expiring":
+      return r.status === "expiring";
+    case "expired":
+      return r.status === "expired";
+    case "hot":
+      return r.hot;
+    case "quiet": {
+      if (now - new Date(r.signed_up_at).getTime() <= QUIET_MS) return false;
+      return !r.last_active || now - new Date(r.last_active).getTime() > QUIET_MS;
+    }
+  }
+}
+
+/** Maps legacy `?status=` values and `?seg=` to a segment. */
+export function parseSegment(v: string | undefined | null): MemberSegment {
+  const legacy: Record<string, MemberSegment> = { active: "paid", never: "free" };
+  const x = v ? (legacy[v] ?? v) : "all";
+  return (MEMBER_SEGMENTS as string[]).includes(x) ? (x as MemberSegment) : "all";
 }
 
 export const MEMBER_STATUS_LABEL: Record<MemberStatus, string> = {
@@ -126,4 +201,59 @@ export interface StudioComment {
   answered: boolean;
   admin_reply: string | null;
   reports: { reason: string; created_at: string }[];
+}
+
+/** Everything the member profile page shows (plain, serializable). */
+export interface MemberDetail {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  email: string;
+  is_banned: boolean;
+  signed_up_at: string;
+  last_sign_in_at: string | null;
+  provider: AuthProvider;
+  email_confirmed: boolean;
+  onboarding_stage: OnboardingStage | null;
+  email_updates: boolean;
+  status: MemberStatus;
+  expires_at: string | null;
+  first_paid_at: string | null;
+  payments: { id: string; paid_at: string; plan: PlanCode | null; method: PaymentMethod; months: number; amount: number; reference: string | null }[];
+  purchases: { id: string; title: string; amount: number; status: string; paid_at: string | null }[];
+  samples: { id: string; title: string; created_at: string }[];
+  watched: {
+    content_id: string;
+    type: ContentType;
+    title: string;
+    thumbnail_url: string | null;
+    duration_sec: number;
+    position_sec: number;
+    completed: boolean;
+    updated_at: string;
+  }[];
+  /** View count per Bangkok day, last 30 days. */
+  daily: DailyPoint[];
+  active_days_30: number;
+  watch_sec: number;
+  lifetime_thb: number;
+  clips_started: number;
+  clips_completed: number;
+  likes: number;
+  saved: number;
+  comments: { id: string; body: string; created_at: string; content_id: string; content_type: ContentType; content_title: string }[];
+  posts: { id: string; body: string; created_at: string }[];
+  post_comment_count: number;
+  welcome: { step: number; sent_at: string }[];
+  notes: { id: string; body: string; created_at: string; author: string }[];
+  notes_available: boolean;
+  audit: { id: string; action: string; note: string; created_at: string; admin: string }[];
+}
+
+/** "3.4 ชม." / "25 นาที" for watch time. */
+export function formatWatch(sec: number): string {
+  if (sec <= 0) return "0 นาที";
+  if (sec < 60) return "< 1 นาที";
+  if (sec < 3600) return `${Math.round(sec / 60)} นาที`;
+  return `${(sec / 3600).toFixed(1)} ชม.`;
 }

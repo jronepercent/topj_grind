@@ -1,16 +1,28 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, Check, CircleAlert, Download, Hourglass, Search, UserX, Users, Wallet } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarPlus, Check, CircleAlert, Download, Flame, Hourglass, Search, UserPlus, UserX, Users, UsersRound, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, EmptyState, Field, inputClass } from "@/components/ui/misc";
 import { extendMemberAction, resolvePaymentErrorAction, revokeMemberAction } from "@/app/studio/actions";
 import { daysUntil, formatNumber, thaiDate, thaiDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { MEMBER_STATUS_LABEL, METHOD_LABEL, type MemberRow, type MemberStatus } from "./types";
-import { Card, CardHeader, Dot, selectClass, selectStyle, StatCard } from "./ui";
+import {
+  formatWatch,
+  inSegment,
+  MEMBER_SEGMENTS,
+  MEMBER_STATUS_LABEL,
+  ONBOARDING_STAGE_LABEL,
+  PLAN_LABEL,
+  SEGMENT_LABEL,
+  type MemberRow,
+  type MemberSegment,
+  type MemberStatus,
+} from "./types";
+import { Card, CardHeader, Dot, StatCard } from "./ui";
 import { isoToBkkInput } from "./editor-parts";
 import { TimeAgo } from "@/components/ui/time-ago";
 
@@ -30,7 +42,7 @@ export interface PaymentErrorEntry {
   created_at: string;
 }
 
-const ACTION_LABEL: Record<string, string> = {
+export const ACTION_LABEL: Record<string, string> = {
   "content.create": "สร้างคอนเทนต์",
   "content.published": "เผยแพร่คอนเทนต์",
   "content.scheduled": "ตั้งเวลาเผยแพร่",
@@ -59,6 +71,32 @@ const ACTION_LABEL: Record<string, string> = {
   "comment.delete": "ลบความคิดเห็น",
   "user.ban": "แบนผู้ใช้",
   "user.unban": "ยกเลิกแบนผู้ใช้",
+  "content.publish": "เผยแพร่คอนเทนต์",
+  "article.create": "สร้างบทความ",
+  "article.update": "แก้ไขบทความ",
+  "article.delete": "ลบบทความ",
+  "article.pin": "ปักหมุดบทความ",
+  "article.unpin": "เลิกปักหมุดบทความ",
+  "email.broadcast": "ส่งอีเมลถึงสมาชิก",
+  "onboarding.update": "แก้เส้นทางเริ่มต้น",
+  "post.delete": "ลบโพสต์ชุมชน",
+  "post.pin": "ปักหมุดโพสต์ชุมชน",
+  "post.unpin": "เลิกปักหมุดโพสต์ชุมชน",
+  "post.hide": "ซ่อนโพสต์ชุมชน",
+  "post.unhide": "แสดงโพสต์ชุมชน",
+  "post_comment.delete": "ลบคอมเมนต์ชุมชน",
+  "post_comment.hide": "ซ่อนคอมเมนต์ชุมชน",
+  "post_comment.unhide": "แสดงคอมเมนต์ชุมชน",
+  "product.create": "สร้างสินค้า",
+  "product.update": "แก้ไขสินค้า",
+  "product.delete": "ลบสินค้า",
+  "product.feature": "ปักหมุดสินค้า",
+  "product.unfeature": "เลิกปักหมุดสินค้า",
+  "product.grant": "มอบสินค้าให้ผู้ใช้",
+  "product.kohort_unlink": "ยกเลิกผูกลิงก์ Kohort",
+  "purchase.refund": "คืนเงินคำสั่งซื้อ",
+  "member.note": "เพิ่มโน้ตสมาชิก",
+  "member.note_delete": "ลบโน้ตสมาชิก",
 };
 
 const STATUS_TONE: Record<MemberStatus, "success" | "member" | "danger" | "muted"> = {
@@ -68,41 +106,94 @@ const STATUS_TONE: Record<MemberStatus, "success" | "member" | "danger" | "muted
   never: "muted",
 };
 
+type DialogMember = Pick<MemberRow, "id" | "display_name" | "expires_at">;
+
+type SortKey = "lifetime_thb" | "watch_sec" | "last_active" | "signed_up_at" | "expires_at";
+type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
+
+function sortValue(m: MemberRow, key: SortKey): number | null {
+  if (key === "lifetime_thb" || key === "watch_sec") return m[key];
+  const v = m[key];
+  return v ? new Date(v).getTime() : null;
+}
+
 export function MembersManager({
   rows,
   summary,
   audit,
   paymentErrors,
-  initialStatus,
+  initialSegment,
   initialQuery,
 }: {
   rows: MemberRow[];
-  summary: { active: number; within7: number; expiringThisMonth: number; revenue: number };
+  summary: { active: number; within7: number; expiringThisMonth: number; revenue: number; total: number; free: number; new7: number; hot: number };
   audit: AuditEntry[];
   paymentErrors: PaymentErrorEntry[];
-  initialStatus: MemberStatus | "all";
+  initialSegment: MemberSegment;
   initialQuery: string;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
-  const [status, setStatus] = React.useState<MemberStatus | "all">(initialStatus);
+  const [seg, setSeg] = React.useState<MemberSegment>(initialSegment);
+  const [sort, setSort] = React.useState<Sort>(null);
+  const [now] = React.useState(() => Date.now());
   const [dialog, setDialog] = React.useState<null | { kind: "extend" | "revoke"; m: MemberRow }>(null);
   const [errors, setErrors] = React.useState(paymentErrors);
   React.useEffect(() => setErrors(paymentErrors), [paymentErrors]);
 
   const term = q.trim().toLowerCase();
-  const list = rows.filter(
-    (r) => (status === "all" || r.status === status) && (!term || r.display_name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term)),
+  const counts = React.useMemo(() => {
+    const out = {} as Record<MemberSegment, number>;
+    for (const k of MEMBER_SEGMENTS) out[k] = rows.filter((r) => inSegment(r, k, now)).length;
+    return out;
+  }, [rows, now]);
+  const list = React.useMemo(() => {
+    const out = rows.filter(
+      (r) => inSegment(r, seg, now) && (!term || r.display_name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term)),
+    );
+    if (!sort) return out;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return out.slice().sort((a, b) => {
+      const x = sortValue(a, sort.key);
+      const y = sortValue(b, sort.key);
+      if (x === null && y === null) return 0;
+      if (x === null) return 1; // empty values always last
+      if (y === null) return -1;
+      return (x - y) * dir;
+    });
+  }, [rows, seg, term, sort, now]);
+  const csvHref = `/api/studio/members?${new URLSearchParams({ ...(term ? { q: term } : {}), seg }).toString()}`;
+
+  const pick = (next: MemberSegment) => {
+    setSeg(next);
+    router.replace(next === "all" ? "/studio/members" : `/studio/members?seg=${next}`, { scroll: false });
+  };
+  const toggleSort = (key: SortKey) =>
+    setSort((cur) => (!cur || cur.key !== key ? { key, dir: "desc" } : cur.dir === "desc" ? { key, dir: "asc" } : null));
+  const th = (key: SortKey, label: string) => (
+    <th scope="col" className="px-3 py-3 font-medium" aria-sort={sort?.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 hover:text-text">
+        {label}
+        {sort?.key === key ? sort.dir === "asc" ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden /> : null}
+      </button>
+    </th>
   );
-  const csvHref = `/api/studio/members?${new URLSearchParams({ ...(term ? { q: term } : {}), status }).toString()}`;
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="สมาชิกปัจจุบัน" value={summary.active} icon={<Users />} tone="member" />
-        <StatCard label="ใกล้หมดอายุใน 7 วัน" value={summary.within7} icon={<Hourglass />} />
-        <StatCard label="หมดอายุเดือนนี้" value={summary.expiringThisMonth} icon={<UserX />} hint="ทั้งที่หมดแล้วและกำลังจะหมด" />
-        <StatCard label="รายได้เดือนนี้" value={`฿${formatNumber(summary.revenue)}`} icon={<Wallet />} hint="จากการชำระเงิน (เวลาประเทศไทย)" />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="สมาชิกปัจจุบัน" value={summary.active} icon={<Users />} tone="member" />
+          <StatCard label="ใกล้หมดอายุใน 7 วัน" value={summary.within7} icon={<Hourglass />} />
+          <StatCard label="หมดอายุเดือนนี้" value={summary.expiringThisMonth} icon={<UserX />} hint="ทั้งที่หมดแล้วและกำลังจะหมด" />
+          <StatCard label="รายได้เดือนนี้" value={`฿${formatNumber(summary.revenue)}`} icon={<Wallet />} hint="จากการชำระเงิน (เวลาประเทศไทย)" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="บัญชีทั้งหมด" value={summary.total} icon={<UsersRound />} />
+          <StatCard label="บัญชีฟรี" value={summary.free} icon={<Users />} hint="ยังไม่เคยจ่ายเงิน" />
+          <StatCard label="สมัครใหม่ 7 วัน" value={summary.new7} icon={<UserPlus />} />
+          <StatCard label="Lead ร้อน" value={summary.hot} icon={<Flame />} tone="danger" hint="ยังไม่จ่าย แต่ดูหนักใน 7 วัน" />
+        </div>
       </div>
 
       {errors.length > 0 && (
@@ -147,18 +238,29 @@ export function MembersManager({
       )}
 
       <div>
+        <div role="tablist" aria-label="กลุ่มสมาชิก" className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-1">
+          {MEMBER_SEGMENTS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={seg === k}
+              onClick={() => pick(k)}
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-medium transition-colors",
+                seg === k ? "border-text bg-text text-bg" : "border-border bg-surface hover:bg-hover",
+              )}
+            >
+              {SEGMENT_LABEL[k]}
+              <span className={cn("tnum text-[12px]", seg === k ? "opacity-70" : "text-text-2")}>{formatNumber(counts[k])}</span>
+            </button>
+          ))}
+        </div>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-2" aria-hidden />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อหรืออีเมล" aria-label="ค้นหาสมาชิก" className={cn(inputClass, "h-10 rounded-full py-0 pl-10")} />
           </div>
-          <select aria-label="สถานะ" value={status} onChange={(e) => setStatus(e.target.value as MemberStatus | "all")} className={selectClass} style={selectStyle}>
-            <option value="all">ทุกสถานะ</option>
-            <option value="active">สมาชิก</option>
-            <option value="expiring">ใกล้หมด (≤ 3 วัน)</option>
-            <option value="expired">หมดอายุ</option>
-            <option value="never">ไม่เคยจ่าย</option>
-          </select>
           <Button asChild variant="outline" className="ml-auto">
             <a href={csvHref} download>
               <Download /> ส่งออก CSV
@@ -171,17 +273,19 @@ export function MembersManager({
         ) : (
           <>
             <div className="hidden overflow-x-auto rounded-[16px] border border-border lg:block">
-              <table className="w-full min-w-[980px] text-left">
+              <table className="w-full min-w-[1180px] text-left">
                 <thead>
                   <tr className="border-b border-border bg-surface text-[12px] text-text-2">
-                    <th className="px-4 py-3 font-medium">ชื่อ</th>
-                    <th className="px-3 py-3 font-medium">อีเมล</th>
-                    <th className="px-3 py-3 font-medium">วันสมัคร</th>
-                    <th className="px-3 py-3 font-medium">วันหมดอายุ</th>
-                    <th className="px-3 py-3 font-medium">สถานะ</th>
-                    <th className="px-3 py-3 font-medium">ช่องทางจ่ายล่าสุด</th>
-                    <th className="px-3 py-3 font-medium">ดูล่าสุด</th>
-                    <th className="px-4 py-3 text-right font-medium">
+                    <th scope="col" className="px-4 py-3 font-medium">ชื่อ</th>
+                    <th scope="col" className="px-3 py-3 font-medium">สถานะ</th>
+                    <th scope="col" className="px-3 py-3 font-medium">แผน</th>
+                    {th("expires_at", "วันหมดอายุ")}
+                    {th("lifetime_thb", "จ่ายรวม")}
+                    <th scope="col" className="px-3 py-3 font-medium">ขั้น</th>
+                    {th("watch_sec", "ดูแล้ว")}
+                    {th("last_active", "ใช้งานล่าสุด")}
+                    {th("signed_up_at", "สมัครบัญชี")}
+                    <th scope="col" className="px-4 py-3 text-right font-medium">
                       <span className="sr-only">จัดการ</span>
                     </th>
                   </tr>
@@ -190,22 +294,31 @@ export function MembersManager({
                   {list.map((m) => (
                     <tr key={m.id} className="border-b border-border text-[13px] last:border-0 hover:bg-hover/60">
                       <td className="px-4 py-3">
-                        <span className="flex items-center gap-2.5">
-                          <Avatar src={m.avatar_url} name={m.display_name} size={28} />
-                          <span className="font-medium">{m.display_name}</span>
-                          {m.is_banned && <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">ถูกแบน</span>}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-text-2">{m.email}</td>
-                      <td className="tnum px-3 py-3">{m.first_paid_at ? thaiDate(m.first_paid_at) : <span className="text-text-2">—</span>}</td>
-                      <td className="tnum px-3 py-3">
-                        <ExpiryCell m={m} />
+                        <Link href={`/studio/members/${m.id}`} className="flex items-center gap-2.5">
+                          <Avatar src={m.avatar_url} name={m.display_name} size={32} />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-medium hover:underline">{m.display_name}</span>
+                              <MemberBadges m={m} />
+                            </span>
+                            <span className="t-caption block max-w-[220px] truncate text-text-2">{m.email}</span>
+                          </span>
+                        </Link>
                       </td>
                       <td className="px-3 py-3">
                         <StatusPill s={m.status} />
                       </td>
-                      <td className="px-3 py-3 text-text-2">{m.last_method ? METHOD_LABEL[m.last_method] : "—"}</td>
-                      <td className="tnum px-3 py-3 text-text-2">{m.last_watch ? <TimeAgo iso={m.last_watch} /> : "—"}</td>
+                      <td className="px-3 py-3">{m.plan ? PLAN_LABEL[m.plan] : <span className="text-text-2">—</span>}</td>
+                      <td className="tnum px-3 py-3">
+                        <ExpiryCell m={m} />
+                      </td>
+                      <td className="tnum px-3 py-3">{m.lifetime_thb > 0 ? `฿${formatNumber(m.lifetime_thb)}` : <span className="text-text-2">—</span>}</td>
+                      <td className="px-3 py-3">{m.onboarding_stage ? ONBOARDING_STAGE_LABEL[m.onboarding_stage] : <span className="text-text-2">—</span>}</td>
+                      <td className="tnum px-3 py-3">
+                        <WatchCell m={m} />
+                      </td>
+                      <td className="tnum px-3 py-3 text-text-2">{m.last_active ? <TimeAgo iso={m.last_active} /> : "—"}</td>
+                      <td className="tnum px-3 py-3">{thaiDate(m.signed_up_at)}</td>
                       <td className="px-4 py-3">
                         <RowButtons m={m} onOpen={setDialog} />
                       </td>
@@ -217,15 +330,22 @@ export function MembersManager({
             <ul className="space-y-2 lg:hidden">
               {list.map((m) => (
                 <li key={m.id} className="rounded-[16px] border border-border bg-surface p-4">
-                  <div className="flex items-center gap-3">
+                  <Link href={`/studio/members/${m.id}`} className="flex items-center gap-3">
                     <Avatar src={m.avatar_url} name={m.display_name} size={36} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-semibold">{m.display_name}</p>
+                      <p className="flex items-center gap-1.5 text-[14px] font-semibold">
+                        <span className="truncate">{m.display_name}</span>
+                        <MemberBadges m={m} />
+                      </p>
                       <p className="t-caption truncate text-text-2">{m.email}</p>
                     </div>
                     <StatusPill s={m.status} />
-                  </div>
+                  </Link>
                   <dl className="tnum mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                    <div>
+                      <dt className="t-caption text-text-2">แผน</dt>
+                      <dd>{m.plan ? PLAN_LABEL[m.plan] : "—"}</dd>
+                    </div>
                     <div>
                       <dt className="t-caption text-text-2">วันหมดอายุ</dt>
                       <dd>
@@ -233,16 +353,26 @@ export function MembersManager({
                       </dd>
                     </div>
                     <div>
-                      <dt className="t-caption text-text-2">วันสมัคร</dt>
-                      <dd>{m.first_paid_at ? thaiDate(m.first_paid_at) : "—"}</dd>
+                      <dt className="t-caption text-text-2">จ่ายรวม</dt>
+                      <dd>{m.lifetime_thb > 0 ? `฿${formatNumber(m.lifetime_thb)}` : "—"}</dd>
                     </div>
                     <div>
-                      <dt className="t-caption text-text-2">ช่องทางจ่ายล่าสุด</dt>
-                      <dd>{m.last_method ? METHOD_LABEL[m.last_method] : "—"}</dd>
+                      <dt className="t-caption text-text-2">ขั้น</dt>
+                      <dd>{m.onboarding_stage ? ONBOARDING_STAGE_LABEL[m.onboarding_stage] : "—"}</dd>
                     </div>
                     <div>
-                      <dt className="t-caption text-text-2">ดูล่าสุด</dt>
-                      <dd>{m.last_watch ? <TimeAgo iso={m.last_watch} /> : "—"}</dd>
+                      <dt className="t-caption text-text-2">ดูแล้ว</dt>
+                      <dd>
+                        <WatchCell m={m} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="t-caption text-text-2">ใช้งานล่าสุด</dt>
+                      <dd>{m.last_active ? <TimeAgo iso={m.last_active} /> : "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="t-caption text-text-2">สมัครบัญชี</dt>
+                      <dd>{thaiDate(m.signed_up_at)}</dd>
                     </div>
                   </dl>
                   <div className="mt-3 border-t border-border pt-3">
@@ -282,7 +412,30 @@ export function MembersManager({
   );
 }
 
-function StatusPill({ s }: { s: MemberStatus }) {
+export function MemberBadges({ m }: { m: Pick<MemberRow, "is_banned" | "hot"> }) {
+  return (
+    <>
+      {m.is_banned && <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">ถูกแบน</span>}
+      {m.hot && (
+        <span className="shrink-0" title="Lead ร้อน" aria-label="Lead ร้อน">
+          🔥
+        </span>
+      )}
+    </>
+  );
+}
+
+function WatchCell({ m }: { m: MemberRow }) {
+  if (!m.clips_started && !m.watch_sec) return <span className="text-text-2">—</span>;
+  return (
+    <span>
+      {formatNumber(m.clips_started)} คลิป · <span title="ประมาณจากความคืบหน้า">~{formatWatch(m.watch_sec)}</span>
+      {m.clips_completed > 0 && <span className="t-caption block text-text-2">ดูจบ {formatNumber(m.clips_completed)}</span>}
+    </span>
+  );
+}
+
+export function StatusPill({ s }: { s: MemberStatus }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-[13px] font-medium", s === "expiring" && "text-member", s === "never" && "text-text-2")}>
       <Dot tone={STATUS_TONE[s]} /> {MEMBER_STATUS_LABEL[s]}
@@ -290,7 +443,7 @@ function StatusPill({ s }: { s: MemberStatus }) {
   );
 }
 
-function ExpiryCell({ m }: { m: MemberRow }) {
+export function ExpiryCell({ m }: { m: Pick<MemberRow, "expires_at" | "status"> }) {
   if (!m.expires_at) return <span className="text-text-2">—</span>;
   const left = daysUntil(m.expires_at);
   return (
@@ -317,7 +470,7 @@ function RowButtons({ m, onOpen }: { m: MemberRow; onOpen: (d: { kind: "extend" 
   );
 }
 
-function ExtendDialog({ m, onClose, onDone }: { m: MemberRow; onClose: () => void; onDone: () => void }) {
+export function ExtendDialog({ m, onClose, onDone }: { m: DialogMember; onClose: () => void; onDone: () => void }) {
   const [mode, setMode] = React.useState<"days" | "until">("days");
   const base = Math.max(Date.now(), m.expires_at ? new Date(m.expires_at).getTime() : 0);
   const [until, setUntil] = React.useState(isoToBkkInput(new Date(base + 30 * 86_400_000).toISOString()).slice(0, 10));
@@ -395,7 +548,7 @@ function ExtendDialog({ m, onClose, onDone }: { m: MemberRow; onClose: () => voi
   );
 }
 
-function RevokeDialog({ m, onClose, onDone }: { m: MemberRow; onClose: () => void; onDone: () => void }) {
+export function RevokeDialog({ m, onClose, onDone }: { m: DialogMember; onClose: () => void; onDone: () => void }) {
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   return (

@@ -3,11 +3,12 @@ import { isUuid } from "@/lib/server/queries";
 import { PageHeader } from "@/components/studio/ui";
 import { MembersManager, type AuditEntry, type PaymentErrorEntry } from "@/components/studio/members-manager";
 import type { AuditLog, PaymentError } from "@/lib/types";
+import { parseSegment } from "@/components/studio/types";
 import { fetchIn, memberRows, memberSummary } from "../_lib/data";
 
 export const metadata = { title: "สมาชิก" };
 
-export default async function StudioMembersPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string }> }) {
+export default async function StudioMembersPage({ searchParams }: { searchParams: Promise<{ seg?: string; status?: string; q?: string }> }) {
   const sp = await searchParams;
   const now = Date.now();
   const db = adminDb();
@@ -58,12 +59,12 @@ export default async function StudioMembersPage({ searchParams }: { searchParams
     return { id: e.id, reason: e.reason ?? "", created_at: e.created_at, payload: payload.length > 1200 ? payload.slice(0, 1200) + "\n…" : payload };
   });
 
-  const status = ["active", "expiring", "expired", "never"].includes(sp.status ?? "") ? (sp.status as "active") : "all";
+  const segment = parseSegment(sp.seg ?? sp.status);
 
   return (
     <div>
       <PageHeader title="สมาชิก" description="สถานะคำนวณจากวันหมดอายุเท่านั้น · ทุกการแก้ไขถูกบันทึกในประวัติการดำเนินการ" />
-      <MembersManager rows={rows} summary={summary} audit={audit} paymentErrors={paymentErrors} initialStatus={status} initialQuery={sp.q ?? ""} />
+      <MembersManager rows={rows} summary={summary} audit={audit} paymentErrors={paymentErrors} initialSegment={segment} initialQuery={sp.q ?? ""} />
     </div>
   );
 }

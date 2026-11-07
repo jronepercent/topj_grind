@@ -705,6 +705,7 @@ export async function extendMemberAction(userId: string, opts: { days?: number; 
     if (opts.until && Number.isNaN(new Date(opts.until).getTime())) throw new HttpError(400, "วันที่ไม่ถูกต้อง");
     const exp = await manualExtend(a, userId, opts, note);
     revalidatePath("/studio/members");
+    revalidatePath(`/studio/members/${userId}`);
     return exp;
   });
 }
@@ -714,6 +715,31 @@ export async function revokeMemberAction(userId: string, note: string) {
     if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
     await revokeMembership(a, userId, note);
     revalidatePath("/studio/members");
+    revalidatePath(`/studio/members/${userId}`);
+  });
+}
+
+export async function addMemberNoteAction(userId: string, body: string) {
+  return admin(async (a) => {
+    if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
+    const text = body.trim();
+    if (!text) throw new HttpError(400, "กรุณาเขียนโน้ต");
+    if (text.length > 2000) throw new HttpError(400, "โน้ตยาวเกิน 2,000 ตัวอักษร");
+    must(await adminDb().from("member_notes").insert({ user_id: userId, author_id: a.id, body: text }), "add note");
+    await audit(a.id, "member.note", "user", userId);
+    revalidatePath(`/studio/members/${userId}`);
+  });
+}
+
+export async function deleteMemberNoteAction(id: string) {
+  return admin(async (a) => {
+    if (!isUuid(id)) throw new HttpError(404, "ไม่พบโน้ต");
+    const { data } = await adminDb().from("member_notes").select("user_id").eq("id", id).maybeSingle();
+    must(await adminDb().from("member_notes").delete().eq("id", id), "delete note");
+    if (data?.user_id) {
+      await audit(a.id, "member.note_delete", "user", data.user_id as string);
+      revalidatePath(`/studio/members/${data.user_id}`);
+    }
   });
 }
 
