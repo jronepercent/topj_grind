@@ -44,3 +44,6 @@ next-env.d.ts
 
 # local database backups (contain user data)
 /backups
+
+# clip-ai transcripts and audio
+.clip-ai/
