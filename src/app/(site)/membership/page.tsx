@@ -9,6 +9,7 @@ import { listContent, paymentsFor, siteSettings } from "@/lib/server/queries";
 import { MemberBadge } from "@/components/ui/misc";
 import { PlanCard } from "@/components/membership/plan-card";
 import { BenefitList, MemberStatChips } from "@/components/membership/benefits";
+import { Testimonials } from "@/components/membership/testimonials";
 import { contentHref, daysUntil, formatDuration, formatNumber, thaiDate } from "@/lib/format";
 import { PLANS, PLAN_LIST, planOfPayment, renewalLabel, yearlySavings, type PlanCode } from "@/lib/plans";
 import { PayButton } from "./_components/pay-button";
@@ -184,6 +185,9 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           </ol>
         </section>
       )}
+
+      {/* ── Student results, right before the price (members already decided) ── */}
+      {!isMember && <Testimonials className="mt-16" />}
 
       {/* ── Plans (the channel owner's own account has full access, so nothing to sell there) ── */}
       {(!isMember || hasExpiry) && (

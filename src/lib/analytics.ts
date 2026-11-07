@@ -28,7 +28,8 @@ export type AnalyticsEvent =
   | "product_checkout_started"
   | "product_purchased"
   | "sample_downloaded"
-  | "community_post_created";
+  | "community_post_created"
+  | "testimonial_played";
 
 /**
  * PostHog project token (US Cloud, project 717369). It is a public client token: it ships in every page's JS anyway,
