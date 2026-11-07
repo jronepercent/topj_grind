@@ -7,6 +7,7 @@ import { Check, Clock, Download, FlaskConical, GraduationCap, MessageCircle, Sho
 import { productOwnedAction } from "@/app/(site)/shop/actions";
 import { SHOP_FROM_KEY } from "@/components/shop/product-checkout-form";
 import { Button } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 import type { CheckoutMethod } from "@/lib/plans";
 import { PRODUCT_TYPE_LABEL, type ProductType } from "@/lib/shop";
 
@@ -66,6 +67,17 @@ export function ProductSuccessPoller({
       if (timer) clearTimeout(timer);
     };
   }, [phase, attempt, product.id, router]);
+
+  // Only a purchase confirmed on this page (not a revisit by an existing owner). Once per session per product.
+  React.useEffect(() => {
+    if (phase !== "done" || alreadyOwned) return;
+    const key = `tg_bought_${product.id}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {}
+    track("product_purchased", { product_id: product.id });
+  }, [phase, alreadyOwned, product.id]);
 
   // Light celebration; skipped entirely for reduced-motion users.
   React.useEffect(() => {

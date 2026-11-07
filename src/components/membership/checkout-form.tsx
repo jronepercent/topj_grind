@@ -21,6 +21,7 @@ import {
   type PlanCode,
 } from "@/lib/plans";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 const baht = (n: number) => `${formatNumber(n)} บาท`;
 const focusRing = "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
@@ -79,6 +80,7 @@ export function CheckoutForm({
       setBusy(false);
       return;
     }
+    track("checkout_started", { plan: planCode, method });
     try {
       if (from) sessionStorage.setItem(PAY_FROM_KEY, from);
       else sessionStorage.removeItem(PAY_FROM_KEY);

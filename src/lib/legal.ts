@@ -6,4 +6,4 @@ export const LEGAL_LINKS = [
 ] as const;
 
 /** Bump when any policy text changes; shown as "ปรับปรุงล่าสุด" on each page. */
-export const LEGAL_UPDATED = "2026-10-22";
+export const LEGAL_UPDATED = "2026-11-07";

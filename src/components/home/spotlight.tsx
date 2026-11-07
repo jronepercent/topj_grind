@@ -14,7 +14,20 @@ export const SPOTLIGHT_COUNT = 5;
  * full width on phones), the next four sit beside it. Titles sit on the image so the block reads as
  * one piece and does not look like the rows below it.
  */
-export function Spotlight({ title, href, items, locked }: { title: string; href?: string; items: MixedItem[]; locked: boolean }) {
+export function Spotlight({
+  title,
+  href,
+  items,
+  locked,
+  eagerLead = false,
+}: {
+  title: string;
+  href?: string;
+  items: MixedItem[];
+  locked: boolean;
+  /** Only when the page has no hero: the lead tile is then the likely LCP. Otherwise it stays lazy so the hero wins. */
+  eagerLead?: boolean;
+}) {
   const shown = items.slice(0, SPOTLIGHT_COUNT);
   if (!shown.length) return null;
   return (
@@ -31,14 +44,14 @@ export function Spotlight({ title, href, items, locked }: { title: string; href?
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {shown.map((m, i) => (
-          <Tile key={m.kind === "content" ? m.c.id : `a-${m.a.id}`} m={m} lead={i === 0} locked={locked} />
+          <Tile key={m.kind === "content" ? m.c.id : `a-${m.a.id}`} m={m} lead={i === 0} eager={i === 0 && eagerLead} locked={locked} />
         ))}
       </div>
     </section>
   );
 }
 
-function Tile({ m, lead, locked }: { m: MixedItem; lead: boolean; locked: boolean }) {
+function Tile({ m, lead, eager, locked }: { m: MixedItem; lead: boolean; eager: boolean; locked: boolean }) {
   const v =
     m.kind === "content"
       ? {
@@ -72,7 +85,8 @@ function Tile({ m, lead, locked }: { m: MixedItem; lead: boolean; locked: boolea
           src={v.img}
           alt=""
           fill
-          priority={lead}
+          priority={eager}
+          fetchPriority={eager ? undefined : "low"}
           sizes={lead ? "(max-width:1024px) 100vw, 50vw" : "(max-width:1024px) 50vw, 25vw"}
           className="object-cover transition-transform duration-300 ease-[var(--ease-apple)] group-hover:scale-[1.03]"
         />

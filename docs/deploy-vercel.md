@@ -15,6 +15,7 @@
 3. ตรวจ 3 ค่านี้:
    - `NEXT_PUBLIC_DEMO_MODE` = `false`
    - `NEXT_PUBLIC_SITE_URL` = `https://topjgrind.com`
+   - `NEXT_PUBLIC_POSTHOG_KEY` = **ไม่ต้องใส่** (ไม่บังคับ) · key ของโปรเจกต์ PostHog (US, 717369) ฝังอยู่ใน `src/lib/analytics.ts` แล้ว และส่งข้อมูลเฉพาะจาก topjgrind.com · ใส่ตัวนี้เมื่ออยากใช้โปรเจกต์อื่นแทน · **Config** (ไม่ใช่ Secret: เป็น key สาธารณะที่ฝังในหน้าเว็บอยู่แล้ว) · เป็น `NEXT_PUBLIC` จึงต้อง **Redeploy** ทุกครั้งที่เปลี่ยนค่า
    - `PAYMENT_URL` ยังว่าง → ใส่ลิงก์ชำระเงินจริงเมื่อมี (ถ้ายังว่าง คนสมัครสมาชิกจ่ายเงินไม่ได้)
 4. กด **Deploy** รอ 2–3 นาที จะได้ลิงก์ `xxx.vercel.app`
 5. เสร็จแล้ว **ลบไฟล์ `.env.vercel` ทิ้ง** (มี secret production)

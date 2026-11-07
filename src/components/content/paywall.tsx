@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Check, Lock } from "lucide-react";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 /** Where the subscribe button should go: the plans page for everyone. Guests create an account there, after picking a plan. */
 export function useSubscribeHref() {
@@ -19,13 +21,18 @@ export function Paywall({
   thumb,
   onClose,
   className,
+  contentId,
 }: {
   variant: "modal" | "player" | "inline";
   thumb?: string | null;
   onClose?: () => void;
   className?: string;
+  contentId?: string;
 }) {
   const { settings } = useViewer();
+  React.useEffect(() => {
+    if (contentId) track("paywall_shown", { content_id: contentId });
+  }, [contentId]);
   const href = useSubscribeHref();
 
   const card = (

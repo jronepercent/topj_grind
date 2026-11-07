@@ -1,10 +1,12 @@
 "use client";
+import * as React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Lock } from "lucide-react";
 import { googleSignInAction } from "@/app/(auth)/auth-actions";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 /** Current path + query, sent as `next` so the visitor lands back on the same clip after signing in. */
 function useNext() {
@@ -48,11 +50,14 @@ function GoogleButton({ compact }: { compact: boolean }) {
  * Lead-capture gate for "free" content: guests watch a teaser, then sign in (free) to continue.
  * "player" = overlay over a blurred poster (fills its positioned parent); "compact" = small card for the mini player.
  */
-export function LoginGate({ variant, thumb, next: nextProp, className }: { variant: "player" | "compact"; thumb?: string | null; /** where to return after sign-in (default: the current URL) */ next?: string; className?: string }) {
+export function LoginGate({ variant, thumb, next: nextProp, className, contentId }: { variant: "player" | "compact"; contentId?: string; thumb?: string | null; /** where to return after sign-in (default: the current URL) */ next?: string; className?: string }) {
   const here = useNext();
   const next = nextProp ?? here;
   const q = encodeURIComponent(next);
   const compact = variant === "compact";
+  React.useEffect(() => {
+    track("login_gate_shown", { content_id: contentId });
+  }, [contentId]);
 
   const card = (
     // On phones the 16:9 player is only ~210px tall: drop the icon and sub-text there, keep title + buttons.

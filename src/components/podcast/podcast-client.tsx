@@ -5,6 +5,7 @@ import { PodcastPlayButton, toPlayerItem } from "@/components/cards/cards";
 import { DescriptionBox } from "@/components/watch/description-box";
 import { useViewer } from "@/components/providers";
 import { usePlayer } from "@/lib/stores/player";
+import { track } from "@/lib/analytics";
 import type { Chapter, Content, ContentLink, ContentResource } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +63,10 @@ export function ShowNotes({
   const { viewer, openPaywall } = useViewer();
   const locked = c.visibility === "members" && !viewer?.is_member;
   const onTime = (t: number) => {
-    if (locked) return openPaywall(c.thumbnail_url);
+    if (locked) {
+      track("paywall_shown", { content_id: c.id });
+      return openPaywall(c.thumbnail_url);
+    }
     const s = usePlayer.getState();
     if (s.item?.id === c.id && s.controls) s.controls.seek(t);
     else s.play({ ...toPlayerItem(c), chapters, startAt: t }, queue.slice(queue.findIndex((q) => q.id === c.id) + 1).map(toPlayerItem));

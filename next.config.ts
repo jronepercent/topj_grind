@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // PostHog reverse proxy (/ingest) calls paths with trailing slashes; do not redirect them.
+  skipTrailingSlashRedirect: true,
   images: {
     // Supabase resizes Storage images; Vercel's optimizer is off (Hobby quota). See src/lib/image-loader.ts.
     loader: "custom",
@@ -26,6 +28,13 @@ const nextConfig: NextConfig = {
         destination: "https://topjgrind.com/:path",
         permanent: true,
       },
+    ];
+  },
+  async rewrites() {
+    // Analytics goes through our own domain so ad blockers do not drop it. Static assets first (more specific).
+    return [
+      { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
+      { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
     ];
   },
   async headers() {

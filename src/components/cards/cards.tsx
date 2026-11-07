@@ -63,6 +63,7 @@ export function Thumb({
           fill
           sizes={sizes}
           priority={priority}
+          fetchPriority={priority ? undefined : "low"}
           className="object-cover transition-transform duration-150 ease-[var(--ease-apple)] group-hover:scale-[1.02]"
         />
       )}

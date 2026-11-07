@@ -14,6 +14,8 @@ import { contentAccess } from "@/lib/access";
 import { contentHref, formatDuration } from "@/lib/format";
 import type { Chapter, Content, PlaylistWithMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { COMPLETE_RATIO } from "@/lib/view-rules";
+import { AfterClipOnboarding } from "@/components/watch/after-clip-onboarding";
 
 // Load the player code after the page shell; the poster shows meanwhile (fast LCP).
 const VideoPlayer = dynamic(() => import("@/components/player/video-player").then((m) => m.VideoPlayer), {
@@ -31,6 +33,8 @@ export interface WatchData {
   progress: ProgressMap;
   /** Members-only clips the viewer may watch anyway (they bought the course product that contains them). */
   unlockedIds?: string[];
+  /** Signed-in and not yet answered/skipped the onboarding question: ask it under the player once the clip is finished. */
+  askOnboarding?: boolean;
 }
 
 function hrefWithList(c: Content, listId?: string) {
@@ -48,6 +52,10 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
   const [ended, setEnded] = React.useState(false);
   const [plAutoplay, setPlAutoplay] = React.useState(true);
   const live = React.useRef({ t: 0, paused: true, ended: false });
+  // After-clip onboarding question: 0 not shown, 1 open (unanswered), 2 answered, 3 skipped.
+  const [ob, setOb] = React.useState<0 | 1 | 2 | 3>(0);
+  const obRef = React.useRef<HTMLElement>(null);
+  const holdAdvance = ob === 1; // no auto-advance to the next clip while the question is unanswered
 
   React.useEffect(() => {
     try {
@@ -98,7 +106,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
 
   const player = locked ? (
     <div className="relative aspect-video w-full overflow-hidden bg-black sm:rounded-[12px]">
-      <Paywall variant="player" thumb={c.thumbnail_url} />
+      <Paywall variant="player" thumb={c.thumbnail_url} contentId={c.id} />
     </div>
   ) : (
     <VideoPlayer
@@ -106,6 +114,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
       id={c.id}
       title={c.title}
       poster={c.thumbnail_url}
+      visibility={c.visibility}
       durationHint={c.duration_sec}
       chapters={chapters}
       startAt={restartKey ? 0 : startAt}
@@ -114,11 +123,22 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
       onTime={(t, paused) => {
         live.current.t = t;
         live.current.paused = paused;
+        if (data.askOnboarding && c.duration_sec > 0 && t / c.duration_sec >= COMPLETE_RATIO) setOb((o) => (o === 0 ? 1 : o));
         if (ended && !paused) setEnded(false);
       }}
       onEnded={() => {
         live.current.ended = true;
         setEnded(true);
+        if (data.askOnboarding) {
+          setOb((o) => (o === 0 ? 1 : o));
+          // the card mounts on the next render: bring it into view if it is off screen
+          setTimeout(() => {
+            const el = obRef.current;
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 150);
+        }
       }}
       className={cn(!theater && "sm:rounded-[12px]")}
     >
@@ -144,7 +164,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
           next={nextItem}
           nextUnlocked={!!nextItem && unlocked.has(nextItem.id)}
           href={nextHref}
-          autoplay={autoplay}
+          autoplay={autoplay && !holdAdvance}
           inPlaylist={!!playlist}
           onReplay={() => {
             setEnded(false);
@@ -187,7 +207,12 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
         </div>
       </div>
 
-      <div className={cn("min-w-0 px-4 pt-3 sm:px-0 lg:[grid-area:info]", theater && "lg:pl-8")}>{children}</div>
+      <div className={cn("min-w-0 px-4 pt-3 sm:px-0 lg:[grid-area:info]", theater && "lg:pl-8")}>
+        {data.askOnboarding && (ob === 1 || ob === 2) && (
+          <AfterClipOnboarding ref={obRef} contentId={c.id} onAnswered={() => setOb(2)} onSkipped={() => setOb(3)} />
+        )}
+        {children}
+      </div>
 
       <aside className={cn("min-w-0 space-y-4 px-4 pb-8 pt-6 sm:px-0 lg:pt-0 lg:[grid-area:side]", theater && "lg:pr-8 lg:pt-6")}>
         {playlist && (

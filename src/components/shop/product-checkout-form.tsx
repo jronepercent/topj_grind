@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CARD_NETWORKS, DEFAULT_METHOD, METHODS, type CheckoutMethod } from "@/lib/plans";
 import { PRODUCT_TYPE_LABEL, deliveryInfo, discountPercent, formatBaht, type ProductCardData } from "@/lib/shop";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 const focusRing = "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
 
@@ -55,6 +56,7 @@ export function ProductCheckoutForm({
       setBusy(false);
       return;
     }
+    track("product_checkout_started", { product_id: product.id });
     try {
       if (from) sessionStorage.setItem(SHOP_FROM_KEY, from);
       else sessionStorage.removeItem(SHOP_FROM_KEY);

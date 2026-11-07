@@ -7,6 +7,7 @@ import { membershipStatusAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { thaiDate } from "@/lib/format";
 import { METHODS, PLANS, type CheckoutMethod, type PlanCode } from "@/lib/plans";
+import { track } from "@/lib/analytics";
 import { PAY_FROM_KEY } from "./pay-button";
 
 const INTERVAL = 3_000;
@@ -81,6 +82,16 @@ export function SuccessPoller({
       if (timer) clearTimeout(timer);
     };
   }, [phase, attempt, router]);
+
+  // Funnel end. Once per browser session, so a reload of the success page does not count twice.
+  React.useEffect(() => {
+    if (phase !== "done") return;
+    try {
+      if (sessionStorage.getItem("tg_paid_tracked")) return;
+      sessionStorage.setItem("tg_paid_tracked", "1");
+    } catch {}
+    track("membership_paid", { plan: plan ?? undefined, method: method ?? undefined });
+  }, [phase, plan, method]);
 
   // Light celebration; skipped entirely for reduced-motion users.
   React.useEffect(() => {

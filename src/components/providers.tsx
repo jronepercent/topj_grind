@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { LogoMark } from "@/components/ui/logo";
 import Link from "next/link";
+import { identifyViewer, resetViewer } from "@/lib/analytics";
 
 interface Ctx {
   viewer: Viewer | null;
@@ -40,6 +41,22 @@ export function Providers({
   const [authPrompt, setAuthPrompt] = React.useState<string | null>(null);
   const [paywall, setPaywall] = React.useState<{ open: boolean; thumb?: string | null }>({ open: false });
   const pathname = usePathname();
+
+  // Analytics identity. Admins are never tracked; signing out starts a fresh anonymous identity.
+  const hadViewer = React.useRef(false);
+  const viewerId = viewer?.id ?? null;
+  const viewerIsAdmin = viewer?.is_admin ?? false;
+  const viewerIsMember = viewer?.is_member ?? false;
+  React.useEffect(() => {
+    // No-ops without a PostHog key; queued until PostHog has loaded (see src/lib/analytics.ts).
+    if (viewerId) {
+      hadViewer.current = true;
+      identifyViewer({ id: viewerId, isAdmin: viewerIsAdmin, isMember: viewerIsMember });
+    } else if (hadViewer.current) {
+      hadViewer.current = false;
+      resetViewer();
+    }
+  }, [viewerId, viewerIsAdmin, viewerIsMember]);
 
   const value = React.useMemo<Ctx>(
     () => ({

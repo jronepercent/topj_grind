@@ -13,6 +13,9 @@ import { Row } from "@/components/home/row";
 import { ROW_SIZES, ROW_W } from "@/components/home/sizes";
 import { SectionHeader } from "@/components/ui/misc";
 import { ProductsRow } from "@/components/home/products-row";
+import { OnboardingCard } from "@/components/home/onboarding-card";
+import { onboardingState, pathFor } from "@/lib/server/onboarding";
+import { stageInfo } from "@/lib/onboarding";
 import { MemberPitch } from "@/components/membership/member-pitch";
 import { SPOTLIGHT_COUNT, Spotlight } from "@/components/home/spotlight";
 import { shuffle } from "@/lib/utils";
@@ -27,8 +30,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const none = Promise.resolve<never[]>([]);
 
   // Everything below is independent — fetch in parallel, and only what an enabled row needs.
-  const [progress, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all] = await Promise.all([
+  const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all] = await Promise.all([
     progressMap(viewer?.id),
+    // Signed-in only: their answer to "ตอนนี้คุณอยู่ตรงไหน" and the matching starter path (cached settings + one profile row).
+    viewer
+      ? onboardingState(viewer.id).then(async (st) => ({ ...st, path: st.stage ? await pathFor(st.stage).catch(() => []) : [] }))
+      : Promise.resolve(null),
     heroSlides(),
     has("latest") ? latestMixed(SPOTLIGHT_COUNT) : none,
     has("videos") ? listContent({ type: "video", limit: 500 }) : none,
@@ -51,6 +58,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <VideoCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.video} priority={i === 0 && !heroItems.length} />
   );
 
+  // Starter path: first thing on the page until every clip in it is finished.
+  const pathDone = onboarding ? onboarding.path.filter((c) => progress[c.id]?.completed).length : 0;
+  const starter: ReactNode =
+    onboarding && !onboarding.onboarded ? (
+      <OnboardingCard key="onboarding" />
+    ) : onboarding?.stage && onboarding.path.length > 0 && pathDone < onboarding.path.length ? (
+      <Row key="starter-path" title={`${stageInfo(onboarding.stage).pathTitle} · ${pathDone}/${onboarding.path.length}`} href="/welcome" itemClass={ROW_W.video}>
+        {onboarding.path.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+      </Row>
+    ) : null;
+
   const rows: ReactNode[] = layout.map((s, idx) => {
     switch (s.type) {
       case "continue":
@@ -60,7 +78,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </Row>
         ) : null;
       case "latest":
-        return mixed.length ? <Spotlight key={s.id} title={s.title} href="/#all-content" items={mixed} locked={locked} /> : null;
+        return mixed.length ? <Spotlight key={s.id} title={s.title} href="/#all-content" items={mixed} locked={locked} eagerLead={!heroItems.length} /> : null;
       case "products":
         return <ProductsRow key={s.id} title={s.title} userId={viewer?.id} />;
       case "videos":
@@ -140,6 +158,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div className="tg-page">
       <Hero items={heroItems} />
       <div className="mx-auto max-w-[1800px] space-y-9 overflow-x-clip px-4 pt-6 sm:space-y-11 sm:px-6 lg:px-8">
+        {starter}
         {locked && <MemberPitch />}
         {rows.filter(Boolean)}
       </div>

@@ -21,5 +21,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Skip static files, images and webhooks/cron (they don't use the visitor session).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|api/webhooks|api/cron|.*\\.(?:png|jpg|jpeg|webp|avif|svg)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|api/webhooks|api/cron|ingest|.*\\.(?:png|jpg|jpeg|webp|avif|svg)$).*)"],
 };

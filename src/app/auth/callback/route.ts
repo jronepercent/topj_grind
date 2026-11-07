@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { adminDb, userDb } from "@/lib/supabase/clients";
 import { claimKohortPayments } from "@/lib/server/kohort";
+import { isNewAccount } from "@/lib/server/onboarding";
+import { isContentPath } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,12 @@ export async function GET(req: NextRequest) {
   // The email is now verified: grant any Kohort payment that was made with it before the account existed.
   if (ok && user?.email) await claimKohortPayments(user.id, user.email);
   if (ok && user) await fillProfileFromGoogle(user).catch(() => {});
+
+  // Brand-new account (email confirm link, Google first sign-in): ask the one onboarding question first, then continue to `next`.
+  // Password recovery links are never onboarding. Coming from a clip/podcast (`next` is a content page): go straight back, the question is asked after the clip.
+  if (ok && user && type !== "recovery" && !next.startsWith("/reset-password") && !isContentPath(next) && (await isNewAccount(user.id, user))) {
+    return NextResponse.redirect(new URL(`/welcome${next === "/" ? "" : `?next=${encodeURIComponent(next)}`}`, url.origin));
+  }
 
   return NextResponse.redirect(new URL(ok ? next : "/login?error=link", url.origin));
 }

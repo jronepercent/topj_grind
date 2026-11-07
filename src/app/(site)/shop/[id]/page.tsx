@@ -12,6 +12,7 @@ import { Markdown } from "@/components/community/markdown";
 import { Button } from "@/components/ui/button";
 import { formatLongDuration, formatNumber } from "@/lib/format";
 import { productJsonLd, productMetadata } from "@/lib/seo";
+import { SampleDownloadLink } from "@/components/shop/sample-download-link";
 import { PRODUCT_TYPE_LABEL, SHOP_FAQ, deliveryInfo, discountPercent, formatBaht, formatFileSize, productCheckoutHref, productHref, productSampleHref } from "@/lib/shop";
 
 type Props = { params: Promise<{ id: string }> };
@@ -118,9 +119,9 @@ export default async function ProductPage({ params }: Props) {
     <div className="w-full lg:flex-1">
       <Button asChild variant="outline" size="lg" className="h-14 w-full text-[16px]">
         {viewer ? (
-          <a href={productSampleHref(p.id)}>
+          <SampleDownloadLink productId={p.id} href={productSampleHref(p.id)}>
             <Download strokeWidth={2} /> โหลดตัวอย่างฟรี
-          </a>
+          </SampleDownloadLink>
         ) : (
           <Link href={`/signup?next=${encodeURIComponent(productHref(p.id))}`}>
             <Download strokeWidth={2} /> โหลดตัวอย่างฟรี

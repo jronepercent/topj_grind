@@ -21,6 +21,7 @@ import { ActionsBar, ChannelRow } from "@/components/watch/actions-bar";
 import { DescriptionBox } from "@/components/watch/description-box";
 import { Comments } from "@/components/social/comments";
 import { MemberBadge } from "@/components/ui/misc";
+import { onboardingState } from "@/lib/server/onboarding";
 import { contentAccess } from "@/lib/access";
 import { FreeBadge } from "@/components/cards/cards";
 import { contentMetadata, videoJsonLd } from "@/lib/seo";
@@ -48,7 +49,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
   const locked = contentAccess(viewer, c.visibility, !!unlockedSet?.has(id)) === "members";
   const chapters = getChapters(c);
   // Independent lookups in parallel — this page's server time is the sum of the slowest, not of all.
-  const [p, pl, rel, comments, liked, saved, links, resources] = await Promise.all([
+  const [p, pl, rel, comments, liked, saved, links, resources, ob] = await Promise.all([
     getProgress(viewer?.id, id),
     list ? getPlaylist(list, viewer?.id) : Promise.resolve(null),
     related(c, 14),
@@ -57,6 +58,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
     hasSaved(viewer?.id, id),
     getLinks(id),
     getResources(id),
+    viewer ? onboardingState(viewer.id).catch(() => null) : Promise.resolve(null),
   ]);
   const plItems = pl ? await playlistItems(pl.id) : [];
   const inList = pl && plItems.some((x) => x.id === id);
@@ -76,6 +78,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
           related: rel,
           playlist: inList ? { meta: pl, items: plItems } : null,
           progress,
+          askOnboarding: !!ob && !ob.onboarded,
           unlockedIds: unlockedSet ? [...unlockedSet].filter((x) => x === id || rel.some((r) => r.id === x) || plItems.some((p) => p.id === x)) : [],
         }}
       >

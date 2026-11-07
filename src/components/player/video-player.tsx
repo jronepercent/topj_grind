@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { LoginGate } from "@/components/content/login-gate";
 import { useSeekBus } from "@/lib/stores/bus";
+import { track } from "@/lib/analytics";
+import { COMPLETE_RATIO } from "@/lib/view-rules";
 import { usePlaySource, useProgressSaver, useViewTracker, type PlaySource } from "./playback-hooks";
 import { formatDuration } from "@/lib/format";
 import type { Chapter } from "@/lib/types";
@@ -48,9 +50,20 @@ export interface VideoPlayerProps {
   /** live time reporter (used for mini-player handoff + share "start at") */
   onTime?: (t: number, paused: boolean) => void;
   loop?: boolean;
+  /** analytics only */
+  visibility?: string;
   variant?: "watch" | "mini";
   className?: string;
   children?: React.ReactNode;
+}
+
+/** Once per content per page load, so replays and the mini-player handoff do not double count. */
+const firedVideoEvents = new Set<string>();
+function trackOnce(event: "video_started" | "video_completed", id: string, props: Record<string, string>) {
+  const key = `${event}:${id}`;
+  if (firedVideoEvents.has(key)) return;
+  firedVideoEvents.add(key);
+  track(event, props);
 }
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -110,6 +123,7 @@ function PlayerInner({
   onEnded,
   onTime,
   loop,
+  visibility,
   variant = "watch",
   className,
   children,
@@ -157,8 +171,10 @@ function PlayerInner({
       trackView(t, p.paused, p.state.duration);
       progress.tick(t, p.state.duration);
     }
+    const d = p.state.duration;
+    if (d > 0 && t / d >= COMPLETE_RATIO && !source.previewSec) trackOnce("video_completed", id, { content_id: id });
     onTime?.(t, p.paused);
-  }, [onTime, trackView, progress, source.previewSec]);
+  }, [onTime, trackView, progress, source.previewSec, id]);
 
   return (
     <MediaPlayer
@@ -177,6 +193,7 @@ function PlayerInner({
         if (startAt && player.current) player.current.currentTime = startAt;
       }}
       onTimeUpdate={onTimeUpdate}
+      onPlay={() => trackOnce("video_started", id, { content_id: id, visibility: visibility ?? (source.previewSec ? "free" : "unknown") })}
       onPause={() => {
         if (!source.previewSec) progress.flush();
         onTime?.(player.current?.currentTime ?? 0, true);
@@ -207,6 +224,15 @@ function PlayerInner({
  * Guest teaser on "free" content: a small pill while it plays, then at `sec` the video pauses, can't be
  * seeked past the cut-off, and a sign-in gate covers the player. Client-side only (lead capture, not DRM).
  */
+/** Where the gate sends a guest after sign-up: this same clip, at the second the teaser stopped (other query params such as `list` are kept). */
+function resumeUrl(id: string, mini: boolean, sec: number) {
+  const t = Math.max(1, Math.floor(sec));
+  if (mini || typeof window === "undefined") return `/watch/${id}?t=${t}`;
+  const q = new URLSearchParams(window.location.search);
+  q.set("t", String(t));
+  return `${window.location.pathname}?${q.toString()}`;
+}
+
 function PreviewLimit({ sec, poster, variant, id }: { sec: number; poster: string | null; variant: "watch" | "mini"; id: string }) {
   const remote = useMediaRemote();
   const currentTime = useMediaState("currentTime");
@@ -226,7 +252,7 @@ function PreviewLimit({ sec, poster, variant, id }: { sec: number; poster: strin
     }
   }, [currentTime, paused, gated, sec, remote]);
 
-  if (gated) return <LoginGate variant={mini ? "compact" : "player"} thumb={poster} next={mini ? `/watch/${id}` : undefined} />;
+  if (gated) return <LoginGate variant={mini ? "compact" : "player"} contentId={id} thumb={poster} next={resumeUrl(id, mini, sec)} />;
   return (
     <div
       className={cn(

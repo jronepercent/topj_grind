@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 // ───────── Shared pieces ─────────
 
@@ -141,10 +142,10 @@ function GoogleSubmit({ label }: { label: string }) {
 }
 
 /** Shown only when the Google provider is on in Supabase (see googleEnabled). */
-function GoogleSignIn({ next, label, error }: { next: string; label: string; error?: boolean }) {
+function GoogleSignIn({ next, label, error, intent }: { next: string; label: string; error?: boolean; intent: "signup" | "login" }) {
   return (
     <>
-      <form action={googleSignInAction}>
+      <form action={googleSignInAction} onSubmit={() => track(intent === "signup" ? "signup_submitted" : "login_submitted", { method: "google" })}>
         <input type="hidden" name="next" value={next} />
         <GoogleSubmit label={label} />
       </form>
@@ -176,10 +177,10 @@ export function LoginForm({ next, linkError, google, googleError }: { next: stri
         </p>
       )}
 
-      {google && <GoogleSignIn next={next} label="เข้าสู่ระบบด้วย Google" error={googleError} />}
+      {google && <GoogleSignIn next={next} label="เข้าสู่ระบบด้วย Google" error={googleError} intent="login" />}
 
       {mode === "password" ? (
-        <form action={pwAction} className="space-y-4">
+        <form action={pwAction} onSubmit={() => track("login_submitted", { method: "email" })} className="space-y-4">
           <input type="hidden" name="next" value={next} />
           <Field label="อีเมล">
             <input name="email" type="email" autoComplete="email" inputMode="email" required placeholder="you@example.com" className={inputClass} />
@@ -198,7 +199,7 @@ export function LoginForm({ next, linkError, google, googleError }: { next: stri
           </Submit>
         </form>
       ) : (
-        <form action={mlAction} className="space-y-4">
+        <form action={mlAction} onSubmit={() => track("login_submitted", { method: "email" })} className="space-y-4">
           <input type="hidden" name="next" value={next} />
           <Field label="อีเมล">
             <input name="email" type="email" autoComplete="email" inputMode="email" required placeholder="you@example.com" className={inputClass} />
@@ -240,7 +241,7 @@ export function SignupForm({ next, google }: { next: string; google?: boolean })
 
   return (
     <AuthCard title="สร้างบัญชี" subtitle="ฟรี ใช้เวลาไม่ถึงนาที — บันทึกคลิป ถูกใจ และคอมเมนต์ได้ทันที">
-      {google && <GoogleSignIn next={next} label="สมัครด้วย Google" />}
+      {google && <GoogleSignIn next={next} label="สมัครด้วย Google" intent="signup" />}
       <form
         action={action}
         onSubmit={(e) => {
@@ -248,7 +249,10 @@ export function SignupForm({ next, google }: { next: string; google?: boolean })
           if (pw.length < 8) {
             e.preventDefault();
             setLocalError("รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร");
-          } else setLocalError(null);
+          } else {
+            setLocalError(null);
+            track("signup_submitted", { method: "email" });
+          }
         }}
         className="space-y-4"
       >

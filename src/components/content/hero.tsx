@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { preload } from "react-dom";
 import Link from "next/link";
 import { getImageProps } from "next/image";
 import { Clock, ExternalLink, Lock, Play } from "lucide-react";
@@ -82,28 +83,51 @@ export function Hero({ items, device, className }: { items: HeroSlide[]; device?
   );
 }
 
-/** Desktop image, or the phone image under 640px when the slide has one (art direction via <picture>). */
+/** Hero images sit behind dark gradients, so a lower quality saves bytes without being visible. */
+const HERO_QUALITY = 60;
+const PHONE_MQ = "(max-width: 639px)";
+const WIDE_MQ = "(min-width: 640px)";
+
+/**
+ * Desktop image, or the phone image under 640px when the slide has one (art direction via <picture>).
+ * Slide 0 (not in Studio preview) is the LCP candidate: fetchpriority=high, eager, and a <link rel=preload>
+ * emitted during SSR for each variant (media-gated so a phone never fetches the desktop file and vice versa).
+ * Other slides are lazy + low priority so they do not compete with it.
+ */
 function SlideImage({ slide, first, device }: { slide: HeroSlide; first: boolean; device?: "mobile" | "desktop" }) {
   const desktop = slide.image ?? slide.mobile_image;
   const mobile = slide.mobile_image ?? desktop;
   if (!desktop || !mobile) return null;
-  const common = { alt: "", fill: true, sizes: "100vw", priority: first && !device, className: "object-cover" } as const;
+  const lcp = first && !device;
+  const common = { alt: "", fill: true, sizes: "100vw", quality: HERO_QUALITY, className: "object-cover" } as const;
+  const loadAttrs = lcp
+    ? ({ loading: "eager", fetchPriority: "high" } as const)
+    : device
+      ? ({} as const)
+      : ({ loading: "lazy", fetchPriority: "low" } as const);
   if (device) {
     const { props } = getImageProps({ ...common, src: device === "mobile" ? mobile : desktop });
     // eslint-disable-next-line @next/next/no-img-element
     return <img {...props} />;
   }
   const { props } = getImageProps({ ...common, src: desktop });
+  const preloadVariant = (p: { src: string; srcSet?: string; sizes?: string }, media?: string) =>
+    preload(p.src, { as: "image", imageSrcSet: p.srcSet, imageSizes: p.sizes ?? "100vw", fetchPriority: "high", ...(media ? { media } : {}) });
   if (mobile === desktop) {
+    if (lcp) preloadVariant(props);
     // eslint-disable-next-line @next/next/no-img-element
-    return <img {...props} loading={first ? undefined : "lazy"} />;
+    return <img {...props} {...loadAttrs} />;
   }
-  const { srcSet: mobileSet } = getImageProps({ ...common, src: mobile }).props;
+  const mobileProps = getImageProps({ ...common, src: mobile }).props;
+  if (lcp) {
+    preloadVariant(mobileProps, PHONE_MQ);
+    preloadVariant(props, WIDE_MQ);
+  }
   return (
     <picture>
-      <source media="(max-width: 639px)" srcSet={mobileSet} sizes="100vw" />
+      <source media={PHONE_MQ} srcSet={mobileProps.srcSet} sizes="100vw" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img {...props} loading={first ? undefined : "lazy"} />
+      <img {...props} {...loadAttrs} />
     </picture>
   );
 }

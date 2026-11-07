@@ -29,10 +29,26 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+/** Origin of the Supabase Storage host that serves every cover/hero image; connect to it before the first <img> is parsed. */
+const IMAGE_ORIGIN = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin : null;
+  } catch {
+    return null;
+  }
+})();
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = (await cookies()).get("tg_theme")?.value ?? "dark";
   return (
     <html lang="th" data-theme={theme} className={`${inter.variable} ${thai.variable}`} suppressHydrationWarning>
+      {/* Plain tags: ReactDOM.preconnect() from this server layout emitted nothing. Images are not CORS requests: no crossOrigin. */}
+      {IMAGE_ORIGIN && (
+        <head>
+          <link rel="preconnect" href={IMAGE_ORIGIN} />
+          <link rel="dns-prefetch" href={IMAGE_ORIGIN} />
+        </head>
+      )}
       <body>
         <ViewportGuard />
         {children}

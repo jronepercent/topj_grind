@@ -13,6 +13,7 @@ import { ACCEPT_IMAGES, prepareImage, putImage, type PreparedImage } from "@/lib
 import { POST_LIMITS, type PostView } from "@/lib/community";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 interface Picked {
   id: string;
@@ -122,6 +123,7 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
       }
       const r = await createPostAction(text, urls);
       if (!r.ok) throw new Error(r.error);
+      track("community_post_created", { has_images: urls.length > 0 });
       onPosted(r.data);
       setText("");
       setPicked([]);
