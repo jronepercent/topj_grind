@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
     // Supabase resizes Storage images; Vercel's optimizer is off (Hobby quota). See src/lib/image-loader.ts.
     loader: "custom",
     loaderFile: "./src/lib/image-loader.ts",
-    // Fewer srcset candidates = much smaller HTML (the loader caps widths at 2500 anyway).
-    deviceSizes: [640, 828, 1080, 1280, 1920],
-    imageSizes: [192, 256, 384],
     remotePatterns: [
       { protocol: "https", hostname: "picsum.photos" },
       { protocol: "https", hostname: "fastly.picsum.photos" },

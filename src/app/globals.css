@@ -149,12 +149,6 @@ body {
   100% { transform: translateX(100%); }
 }
 
-/* Skip layout/paint of below-the-fold home sections; `auto` remembers the real size once rendered. */
-/* content-visibility clips paint to the box, so the box is widened to the page gutters (matching the container's px)
-   to keep the full-bleed scroll tracks and arrow buttons visible. */
-.tg-defer { content-visibility: auto; contain-intrinsic-size: auto 420px; margin-inline: -1rem; padding-inline: 1rem; }
-@media (min-width: 640px) { .tg-defer { margin-inline: -1.5rem; padding-inline: 1.5rem; } }
-@media (min-width: 1024px) { .tg-defer { margin-inline: -2rem; padding-inline: 2rem; } }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
@@ -184,9 +178,7 @@ body {
 .tg-page { animation: pageIn 350ms var(--ease-apple); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-/* Centering lives in Tailwind v4's `translate` property (-translate-x/y-1/2), which stacks with `transform` —
-   so popIn must not translate by -50% again, or the dialog flies in from the top-left and snaps to center. */
-@keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes dropIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
 @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes sheetLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
