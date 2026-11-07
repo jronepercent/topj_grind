@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
-import { getPost, listPostComments } from "@/lib/server/community";
+import { getPost, listPostComments, markThreadRead } from "@/lib/server/community";
 import { PostDetail } from "@/components/community/post-detail";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   if (!viewer) redirect(`/login?next=${encodeURIComponent(`/community/posts/${id}`)}`);
   const post = await getPost(id, viewer);
   if (!post) notFound();
+  markThreadRead(viewer.id, "posts", post.id);
   const comments = await listPostComments(post.id, 0);
   return (
     <div className="mx-auto max-w-[600px]">

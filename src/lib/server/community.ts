@@ -1,6 +1,8 @@
 import "server-only";
+import { after } from "next/server";
 import { adminDb, must, userDb } from "@/lib/supabase/clients";
 import { HttpError } from "./auth";
+import { queueReplyEmail, replySubject } from "./reply-emails";
 import { mdExcerpt, POST_LIMITS, readMinutes } from "@/lib/community";
 import type { ArticleView, FeedPage, PostAuthor, PostCommentView, PostView } from "@/lib/community";
 import type { Viewer } from "@/lib/types";
@@ -30,8 +32,38 @@ async function audit(adminId: string, action: string, targetType: string, target
   await adminDb().from("admin_audit_log").insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId });
 }
 
+/** Insert an in-site notification; returns its id (null if the insert failed). */
 async function notifyUser(n: { user_id: string; type: string; title: string; body: string; link: string; image_url?: string | null }) {
-  await adminDb().from("notifications").insert({ ...n, image_url: n.image_url?.startsWith("data:") ? null : (n.image_url ?? null) });
+  const { data, error } = await adminDb()
+    .from("notifications")
+    .insert({ ...n, image_url: n.image_url?.startsWith("data:") ? null : (n.image_url ?? null) })
+    .select("id")
+    .single();
+  if (error) console.error("[community] notify:", error.message);
+  return (data?.id as string | undefined) ?? null;
+}
+
+/**
+ * Opening a post / article counts as reading its comment & reply notifications, so the reply-email throttle
+ * (reply-emails.ts: one email per thread until they come back) resets once the person is back on the thread.
+ */
+export function markThreadRead(userId: string, kind: "posts" | "articles", id: string) {
+  if (!isId(id)) return;
+  const run = async () => {
+    const { error } = await adminDb()
+      .from("notifications")
+      .update({ read_at: nowIso() })
+      .eq("user_id", userId)
+      .eq("link", `/community/${kind}/${id}#comments`)
+      .in("type", ["comment", "reply"])
+      .is("read_at", null);
+    if (error) console.error("[community] markThreadRead:", error.message);
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
 }
 
 // ───────────────────────── Authors ─────────────────────────
@@ -302,18 +334,27 @@ export async function createPostComment(viewer: Viewer, postId: string, bodyIn: 
   const name = viewer.is_admin ? "JR" : viewer.display_name;
   const link = `${post.kind === "article" ? `/community/articles/${post.id}` : `/community/posts/${post.id}`}#comments`;
   const image = post.kind === "article" ? post.cover_url : (post.images?.[0] ?? null);
+  const mail = {
+    actorName: name,
+    body,
+    link,
+    where: post.kind === "article" ? ("บทความ" as const) : ("โพสต์" as const),
+    label: post.kind === "article" ? String(post.title ?? "") : mdExcerpt(String(post.body ?? ""), 80),
+  };
   if (parent && parent.user_id !== viewer.id) {
-    await notifyUser({ user_id: parent.user_id, type: "reply", title: `${name} ตอบกลับความคิดเห็นของคุณ`, body: body.slice(0, 80), link, image_url: image });
+    const nid = await notifyUser({ user_id: parent.user_id, type: "reply", title: replySubject({ kind: "reply", actorName: name }), body: body.slice(0, 80), link, image_url: image });
+    if (nid) queueReplyEmail({ ...mail, notificationId: nid, recipientId: parent.user_id, kind: "reply" });
   }
   if (post.author_id !== viewer.id && post.author_id !== parent?.user_id) {
-    await notifyUser({
+    const nid = await notifyUser({
       user_id: post.author_id,
       type: "comment",
-      title: `${name} แสดงความคิดเห็นในโพสต์ของคุณ`,
+      title: replySubject({ kind: "comment", actorName: name }),
       body: body.slice(0, 80),
       link,
       image_url: image,
     });
+    if (nid) queueReplyEmail({ ...mail, notificationId: nid, recipientId: post.author_id, kind: "comment" });
   }
   return commentView(row as unknown as CommentRow, viewer.is_member && !viewer.is_admin ? await memberIds([viewer.id]) : new Map());
 }

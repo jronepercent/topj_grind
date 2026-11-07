@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, Pencil } from "lucide-react";
 import { getViewer } from "@/lib/server/auth";
-import { getArticle, listPostComments } from "@/lib/server/community";
+import { getArticle, listPostComments, markThreadRead } from "@/lib/server/community";
 import { siteSettings } from "@/lib/server/queries";
 import { articleJsonLd, articleMetadata } from "@/lib/seo";
 import { Markdown } from "@/components/community/markdown";
@@ -27,6 +27,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const viewer = await getViewer();
   const a = await getArticle(id, viewer);
   if (!a) notFound();
+  if (viewer) markThreadRead(viewer.id, "articles", a.id);
   const draft = a.status !== "published";
   const [settings, comments] = await Promise.all([siteSettings(), a.body !== null && !draft ? listPostComments(a.id, 0) : null]);
   const path = `/community/articles/${a.id}`;
