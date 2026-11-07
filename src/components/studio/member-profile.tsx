@@ -15,7 +15,7 @@ import { contentHref, formatNumber, thaiDate, thaiDateTime } from "@/lib/format"
 import { MEMBER_TIERS, memberTier } from "@/lib/community";
 import { cn } from "@/lib/utils";
 import { ACTION_LABEL, ExpiryCell, ExtendDialog, RevokeDialog, StatusPill } from "./members-manager";
-import { formatWatch, METHOD_LABEL, ONBOARDING_STAGE_LABEL, PLAN_LABEL, PROVIDER_LABEL, type MemberDetail } from "./types";
+import { auditNoteText, FOLLOWUP_LABEL, formatWatch, METHOD_LABEL, ONBOARDING_STAGE_LABEL, PLAN_LABEL, PROVIDER_LABEL, type MemberDetail } from "./types";
 import { Card, CardHeader, DailyBars, StatCard, StudioThumb } from "./ui";
 
 const PURCHASE_STATUS: Record<string, string> = { paid: "ชำระแล้ว", refunded: "คืนเงินแล้ว" };
@@ -88,6 +88,11 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
               {d.is_banned && <Chip tone="danger">ถูกแบน</Chip>}
               <Chip>{PROVIDER_LABEL[d.provider]}</Chip>
               {!d.email_confirmed && <Chip>ยังไม่ยืนยันอีเมล</Chip>}
+              {d.last_followup && (
+                <Chip>
+                  ทักแล้วเมื่อ&nbsp;<TimeAgo iso={d.last_followup.created_at} />&nbsp;({FOLLOWUP_LABEL[d.last_followup.kind]})
+                </Chip>
+              )}
             </div>
             <dl className="tnum mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
               <Meta label="สมัครเมื่อ" value={thaiDateTime(d.signed_up_at)} />
@@ -301,7 +306,7 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
-                  {a.note && <span className="mt-0.5 block break-words text-text-2">หมายเหตุ: {a.note}</span>}
+                  {a.note && <span className="mt-0.5 block break-words text-text-2">หมายเหตุ: {auditNoteText(a.action, a.note)}</span>}
                 </span>
                 <span className="t-caption text-text-2">{a.admin}</span>
               </li>

@@ -2,11 +2,17 @@ import "server-only";
 import { adminDb } from "@/lib/supabase/clients";
 import { isActiveUntil } from "@/lib/server/auth";
 import { isLive, isUuid } from "@/lib/server/queries";
+import { timeAgo } from "@/lib/format";
 import type { CommentRow, ContentRow, ContentType, PaymentMethod } from "@/lib/types";
 import type { PlanCode } from "@/lib/plans";
 import type {
   AuthProvider,
   DailyPoint,
+  FollowupGroup,
+  FollowupItem,
+  FollowupKind,
+  FunnelWindow,
+  FunnelWindowKey,
   MemberDetail,
   MemberRow,
   MemberStatus,
@@ -15,6 +21,7 @@ import type {
   StudioComment,
   StudioContentRow,
 } from "@/components/studio/types";
+import { FOLLOWUP_HINT, FOLLOWUP_LABEL, isFollowupKind, METHOD_LABEL } from "@/components/studio/types";
 
 export const DAY = 86_400_000;
 const BKK_OFFSET = 7 * 3_600_000; // Asia/Bangkok is UTC+7 all year (no DST)
@@ -439,10 +446,11 @@ export async function memberRows(now = Date.now()): Promise<MemberRow[]> {
     cur.last = maxIso(cur.last, w.updated_at);
     watch.set(w.user_id, cur);
   }
-  const viewAgg = new Map<string, { last: string | null; recentClips: Set<string> }>();
+  const viewAgg = new Map<string, { last: string | null; recentClips: Set<string>; days: Set<string> }>();
   for (const v of views) {
-    const cur = viewAgg.get(v.user_id) ?? { last: null, recentClips: new Set<string>() };
+    const cur = viewAgg.get(v.user_id) ?? { last: null, recentClips: new Set<string>(), days: new Set<string>() };
     cur.last = maxIso(cur.last, v.created_at);
+    cur.days.add(bkkDayKey(v.created_at));
     if (new Date(v.created_at).getTime() >= since7) cur.recentClips.add(v.content_id);
     viewAgg.set(v.user_id, cur);
   }
@@ -479,6 +487,9 @@ export async function memberRows(now = Date.now()): Promise<MemberRow[]> {
         watch_sec: w?.sec ?? 0,
         last_active: maxIso(w?.last, v?.last, u?.last_sign_in_at),
         hot: (status === "never" || status === "expired") && ((v?.recentClips.size ?? 0) >= 3 || (w?.recentSec ?? 0) >= 1800),
+        view_days: v?.days.size ?? 0,
+        recent_clips_7d: v?.recentClips.size ?? 0,
+        recent_sec_7d: w?.recentSec ?? 0,
       };
     })
     .sort((a, b) => {
@@ -560,7 +571,7 @@ export async function memberDetail(id: string, now = Date.now()): Promise<Member
   const sub = check<null | { expires_at: string | null; first_paid_at: string | null }>({ data: subRes.data, error: subRes.error }, "subscription");
 
   const sinceViews = now - 30 * DAY;
-  const [payRes, purRes, sampleRes, wpRes, views, likes, saved, cmRes, postRes, pcCount, welcomeRes, notesRes, logRes] = await Promise.all([
+  const [payRes, purRes, sampleRes, wpRes, views, likes, saved, cmRes, postRes, pcCount, welcomeRes, notesRes, logRes, followRes] = await Promise.all([
     db.from("payments").select("id, paid_at, plan, method, months, amount, reference").eq("user_id", id).order("paid_at", { ascending: false }),
     db.from("purchases").select("id, product_id, amount, status, paid_at").eq("user_id", id).order("paid_at", { ascending: false }),
     db.from("sample_downloads").select("id, product_id, created_at").eq("user_id", id).order("created_at", { ascending: false }),
@@ -583,7 +594,9 @@ export async function memberDetail(id: string, now = Date.now()): Promise<Member
       .eq("target_id", id)
       .order("created_at", { ascending: false })
       .limit(20),
+    db.from("member_followups").select("kind, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(1),
   ]);
+  const lastFollow = !followRes.error ? ((followRes.data ?? []) as { kind: string; created_at: string }[])[0] : undefined;
 
   const payments = check<{ id: string; paid_at: string; plan: PlanCode | null; method: PaymentMethod; months: number; amount: number | string; reference: string | null }[]>(payRes, "payments");
   const purchases = check<{ id: string; product_id: string; amount: number | string; status: string; paid_at: string | null }[]>(purRes, "purchases");
@@ -671,5 +684,122 @@ export async function memberDetail(id: string, now = Date.now()): Promise<Member
     notes: notes.map((n) => ({ id: n.id, body: n.body, created_at: n.created_at, author: (n.author_id && name.get(n.author_id)) || "ผู้ดูแล" })),
     notes_available: notesAvailable,
     audit: logs.map((l) => ({ id: l.id, action: l.action, note: l.note ?? "", created_at: l.created_at, admin: name.get(l.admin_id) ?? "ผู้ดูแล" })),
+    last_followup: lastFollow && isFollowupKind(lastFollow.kind) ? { kind: lastFollow.kind, created_at: lastFollow.created_at } : null,
   };
+}
+
+// ───────── Follow-ups & funnel ─────────
+const FOLLOWUP_HIDE_DAYS = 7;
+
+/** "ต้องทำวันนี้": who to contact today, grouped by why. `available` = false when member_followups is not migrated (nothing is hidden then). */
+export async function memberFollowups(rows: MemberRow[], now = Date.now()): Promise<{ groups: FollowupGroup[]; available: boolean }> {
+  const db = adminDb();
+  const since30 = new Date(now - 30 * DAY).toISOString();
+  const since7 = new Date(now - FOLLOWUP_HIDE_DAYS * DAY).toISOString();
+  const [downloads, purchases, doneRes] = await Promise.all([
+    fetchAll<{ user_id: string; product_id: string; created_at: string }>(
+      (from, to) => db.from("sample_downloads").select("user_id, product_id, created_at").gte("created_at", since30).order("id").range(from, to),
+      "sample downloads",
+    ),
+    fetchAll<{ user_id: string; product_id: string }>(
+      (from, to) => db.from("purchases").select("user_id, product_id").eq("status", "paid").order("id").range(from, to),
+      "purchases",
+    ),
+    db.from("member_followups").select("user_id, kind").gte("created_at", since7).limit(5000),
+  ]);
+  const available = !doneRes.error;
+  const done = new Set(available ? ((doneRes.data ?? []) as { user_id: string; kind: string }[]).map((d) => `${d.user_id}:${d.kind}`) : []);
+
+  const bought = new Set(purchases.map((p) => `${p.user_id}:${p.product_id}`));
+  const known = new Set(rows.map((r) => r.id));
+  const unbought = downloads.filter((d) => known.has(d.user_id) && !bought.has(`${d.user_id}:${d.product_id}`));
+  const products = await fetchIn<{ id: string; title: string }>(unbought.map((d) => d.product_id), (ids) => db.from("products").select("id, title").in("id", ids), "products");
+  const productTitle = new Map(products.map((p) => [p.id, p.title]));
+  const sampleBy = new Map<string, { newest: { product_id: string; created_at: string }; products: Set<string> }>();
+  for (const d of unbought) {
+    const cur = sampleBy.get(d.user_id) ?? { newest: d, products: new Set<string>() };
+    cur.products.add(d.product_id);
+    if (new Date(d.created_at).getTime() > new Date(cur.newest.created_at).getTime()) cur.newest = d;
+    sampleBy.set(d.user_id, cur);
+  }
+
+  const build = (kind: FollowupKind, pick: (r: MemberRow) => { reason: string; sort: number } | null): FollowupGroup => {
+    const items: FollowupItem[] = [];
+    for (const r of rows) {
+      if (r.is_banned || done.has(`${r.id}:${kind}`)) continue;
+      const hit = pick(r);
+      if (hit) items.push({ id: r.id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, reason: hit.reason, sort: hit.sort });
+    }
+    items.sort((a, b) => b.sort - a.sort);
+    return { kind, title: FOLLOWUP_LABEL[kind], hint: FOLLOWUP_HINT[kind], items };
+  };
+
+  const paying = (r: MemberRow) => r.status === "active" || r.status === "expiring";
+  const groups: FollowupGroup[] = [
+    build("hot", (r) =>
+      r.hot ? { reason: `ดู ${r.recent_clips_7d} คลิปใน 7 วัน · ${r.recent_sec_7d >= 60 ? `~${Math.round(r.recent_sec_7d / 60)} นาที` : "< 1 นาที"}`, sort: r.recent_sec_7d } : null,
+    ),
+    build("sample", (r) => {
+      const s = sampleBy.get(r.id);
+      if (!s) return null;
+      const extra = s.products.size - 1;
+      return {
+        reason: `โหลด ${productTitle.get(s.newest.product_id) ?? "ไฟล์ตัวอย่าง"} · ${timeAgo(s.newest.created_at, now)}${extra > 0 ? ` +${extra}` : ""}`,
+        sort: new Date(s.newest.created_at).getTime(),
+      };
+    }),
+    build("expiring", (r) => {
+      if (!paying(r) || !r.expires_at) return null;
+      const left = new Date(r.expires_at).getTime() - now;
+      if (left > 7 * DAY) return null;
+      const method = r.last_method ? ` · ${METHOD_LABEL[r.last_method]}` : "";
+      return { reason: `หมดอีก ${Math.max(0, Math.ceil(left / DAY))} วัน${method}${r.last_method !== "card" ? " · ไม่ต่ออัตโนมัติ" : ""}`, sort: -left };
+    }),
+    build("at_risk", (r) => {
+      if (!paying(r)) return null;
+      if (!r.last_active) return { reason: "ยังไม่เคยดูคลิป", sort: Number.MAX_SAFE_INTEGER };
+      const gone = now - new Date(r.last_active).getTime();
+      return gone > 14 * DAY ? { reason: `ไม่ได้เข้ามา ${Math.floor(gone / DAY)} วัน`, sort: gone } : null;
+    }),
+    build("no_watch", (r) => {
+      if (r.clips_started !== 0) return null;
+      const age = now - new Date(r.signed_up_at).getTime();
+      return age >= DAY && age <= 30 * DAY ? { reason: `สมัคร ${timeAgo(r.signed_up_at, now)}`, sort: -age } : null;
+    }),
+  ];
+  return { groups, available };
+}
+
+const ONBOARDING_LAUNCH = new Date("2026-11-07T00:00:00+07:00").getTime();
+
+/** Signup funnel for the last 30 days, 90 days and all time. Every step is counted independently within the cohort. */
+export function memberFunnel(rows: MemberRow[], now = Date.now()): FunnelWindow[] {
+  const windows: [FunnelWindowKey, string, number][] = [
+    ["30", "30 วัน", 30 * DAY],
+    ["90", "90 วัน", 90 * DAY],
+    ["all", "ทั้งหมด", Infinity],
+  ];
+  return windows.map(([key, label, span]) => {
+    const cohort = rows.filter((r) => now - new Date(r.signed_up_at).getTime() <= span);
+    const onboarded = cohort.filter((r) => new Date(r.signed_up_at).getTime() >= ONBOARDING_LAUNCH);
+    const stages = { idea: 0, build: 0, sell: 0 };
+    let answered = 0;
+    for (const r of cohort) {
+      if (!r.onboarding_stage) continue;
+      answered++;
+      stages[r.onboarding_stage]++;
+    }
+    return {
+      key,
+      label,
+      steps: [
+        { label: "สมัครบัญชี", count: cohort.length },
+        { label: "ดูคลิปแรก", count: cohort.filter((r) => r.clips_started >= 1).length },
+        { label: "ดูจบอย่างน้อย 1 คลิป", count: cohort.filter((r) => r.clips_completed >= 1).length },
+        { label: "กลับมาดูอีกวัน", count: cohort.filter((r) => r.view_days >= 2).length },
+        { label: "จ่ายเงิน", count: cohort.filter((r) => !!r.first_paid_at || r.lifetime_thb > 0).length },
+      ],
+      onboarding: { answered, stages, since: { total: onboarded.length, answered: onboarded.filter((r) => r.onboarding_stage).length } },
+    };
+  });
 }

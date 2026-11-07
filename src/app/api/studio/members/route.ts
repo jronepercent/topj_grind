@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewer } from "@/lib/server/auth";
-import { memberRows } from "@/app/studio/_lib/data";
+import { memberFollowups, memberRows } from "@/app/studio/_lib/data";
 import { inSegment, MEMBER_STATUS_LABEL, METHOD_LABEL, ONBOARDING_STAGE_LABEL, parseSegment, PLAN_LABEL, PROVIDER_LABEL } from "@/components/studio/types";
 import { thaiDate, thaiDateTime } from "@/lib/format";
 
@@ -18,13 +18,17 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
   const seg = parseSegment(req.nextUrl.searchParams.get("seg") ?? req.nextUrl.searchParams.get("status"));
   const now = Date.now();
-  const rows = (await memberRows(now)).filter(
+  const all = await memberRows(now);
+  const { groups } = await memberFollowups(all, now);
+  const todo = new Map<string, string[]>();
+  for (const g of groups) for (const i of g.items) todo.set(i.id, [...(todo.get(i.id) ?? []), g.title]);
+  const rows = all.filter(
     (r) =>
       inSegment(r, seg, now) &&
       (!q || r.display_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)),
   );
 
-  const header = ["ชื่อ", "อีเมล", "วันสมัคร", "วันหมดอายุ", "สถานะ", "ช่องทางจ่ายล่าสุด", "ดูล่าสุด", "ถูกแบน", "สมัครบัญชี", "ล็อกอินด้วย", "ขั้น", "แผน", "จ่ายรวม (บาท)", "คลิปที่ดู", "คลิปที่ดูจบ", "เวลาดูโดยประมาณ (นาที)", "ใช้งานล่าสุด", "รับอีเมล"];
+  const header = ["ชื่อ", "อีเมล", "วันสมัคร", "วันหมดอายุ", "สถานะ", "ช่องทางจ่ายล่าสุด", "ดูล่าสุด", "ถูกแบน", "สมัครบัญชี", "ล็อกอินด้วย", "ขั้น", "แผน", "จ่ายรวม (บาท)", "คลิปที่ดู", "คลิปที่ดูจบ", "เวลาดูโดยประมาณ (นาที)", "ใช้งานล่าสุด", "รับอีเมล", "ต้องตาม"];
   const lines = [header.map(cell).join(",")];
   for (const r of rows) {
     lines.push(
@@ -47,6 +51,7 @@ export async function GET(req: NextRequest) {
         String(Math.round(r.watch_sec / 60)),
         thaiDateTime(r.last_active),
         r.email_updates ? "ใช่" : "ไม่",
+        (todo.get(r.id) ?? []).join(", "),
       ]
         .map(cell)
         .join(","),

@@ -113,6 +113,12 @@ export interface MemberRow {
   last_active: string | null;
   /** Not paying (never / expired) but watched a lot in the last 7 days. */
   hot: boolean;
+  /** Distinct Bangkok days with at least one view. */
+  view_days: number;
+  /** Distinct clips viewed in the last 7 days. */
+  recent_clips_7d: number;
+  /** Estimated seconds watched (from progress rows updated) in the last 7 days. */
+  recent_sec_7d: number;
 }
 
 export type AuthProvider = "google" | "email";
@@ -248,6 +254,8 @@ export interface MemberDetail {
   notes: { id: string; body: string; created_at: string; author: string }[];
   notes_available: boolean;
   audit: { id: string; action: string; note: string; created_at: string; admin: string }[];
+  /** Latest "ทักแล้ว"; null when none or the table is not migrated. */
+  last_followup: { kind: FollowupKind; created_at: string } | null;
 }
 
 /** "3.4 ชม." / "25 นาที" for watch time. */
@@ -256,4 +264,61 @@ export function formatWatch(sec: number): string {
   if (sec < 60) return "< 1 นาที";
   if (sec < 3600) return `${Math.round(sec / 60)} นาที`;
   return `${(sec / 3600).toFixed(1)} ชม.`;
+}
+
+// ───────── Follow-ups & funnel (phase 2) ─────────
+export type FollowupKind = "hot" | "sample" | "expiring" | "at_risk" | "no_watch";
+
+export const FOLLOWUP_KINDS: FollowupKind[] = ["hot", "sample", "expiring", "at_risk", "no_watch"];
+
+/** Thai group names (also used to render the audit note of `member.followup`). */
+export const FOLLOWUP_LABEL: Record<FollowupKind, string> = {
+  hot: "Lead ร้อน 🔥",
+  sample: "โหลดไฟล์ตัวอย่างแต่ยังไม่ซื้อ",
+  expiring: "ใกล้หมดใน 7 วัน",
+  at_risk: "จ่ายแล้วแต่หายไป",
+  no_watch: "สมัครแล้วไม่เคยดู",
+};
+
+export const FOLLOWUP_HINT: Record<FollowupKind, string> = {
+  hot: "ยังไม่จ่าย แต่ดูหนักใน 7 วัน → ทักไปปิดการขาย",
+  sample: "→ ทักไปขายตัวเต็ม",
+  expiring: "→ เตือนให้ต่ออายุ",
+  at_risk: "จ่ายเงินอยู่แต่ไม่ได้เข้ามา 14 วัน → ดึงกลับ",
+  no_watch: "→ ส่งคลิปเริ่มต้นให้",
+};
+
+export function isFollowupKind(v: unknown): v is FollowupKind {
+  return typeof v === "string" && (FOLLOWUP_KINDS as string[]).includes(v);
+}
+
+/** Audit note as shown to people: the followup kind becomes its Thai group name. */
+export function auditNoteText(action: string, note: string): string {
+  return action === "member.followup" && isFollowupKind(note) ? FOLLOWUP_LABEL[note] : note;
+}
+
+export interface FollowupItem {
+  id: string;
+  display_name: string;
+  email: string;
+  avatar_url: string | null;
+  reason: string;
+  sort: number;
+}
+
+export interface FollowupGroup {
+  kind: FollowupKind;
+  title: string;
+  hint: string;
+  items: FollowupItem[];
+}
+
+export type FunnelWindowKey = "30" | "90" | "all";
+
+export interface FunnelWindow {
+  key: FunnelWindowKey;
+  label: string;
+  steps: { label: string; count: number }[];
+  /** `answered` / `stages`: everyone in the cohort with a stage. `since`: only people who signed up after onboarding launched. */
+  onboarding: { answered: number; stages: Record<OnboardingStage, number>; since: { total: number; answered: number } };
 }

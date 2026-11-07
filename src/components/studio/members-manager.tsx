@@ -11,6 +11,7 @@ import { extendMemberAction, resolvePaymentErrorAction, revokeMemberAction } fro
 import { daysUntil, formatNumber, thaiDate, thaiDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
+  auditNoteText,
   formatWatch,
   inSegment,
   MEMBER_SEGMENTS,
@@ -18,12 +19,16 @@ import {
   ONBOARDING_STAGE_LABEL,
   PLAN_LABEL,
   SEGMENT_LABEL,
+  type FollowupGroup,
+  type FunnelWindow,
   type MemberRow,
   type MemberSegment,
   type MemberStatus,
 } from "./types";
 import { Card, CardHeader, Dot, StatCard } from "./ui";
 import { isoToBkkInput } from "./editor-parts";
+import { MemberFollowups } from "./member-followups";
+import { MemberFunnel } from "./member-funnel";
 import { TimeAgo } from "@/components/ui/time-ago";
 
 export interface AuditEntry {
@@ -95,6 +100,7 @@ export const ACTION_LABEL: Record<string, string> = {
   "product.grant": "มอบสินค้าให้ผู้ใช้",
   "product.kohort_unlink": "ยกเลิกผูกลิงก์ Kohort",
   "purchase.refund": "คืนเงินคำสั่งซื้อ",
+  "member.followup": "ทักสมาชิกแล้ว",
   "member.note": "เพิ่มโน้ตสมาชิก",
   "member.note_delete": "ลบโน้ตสมาชิก",
 };
@@ -124,6 +130,8 @@ export function MembersManager({
   paymentErrors,
   initialSegment,
   initialQuery,
+  followups,
+  funnel,
 }: {
   rows: MemberRow[];
   summary: { active: number; within7: number; expiringThisMonth: number; revenue: number; total: number; free: number; new7: number; hot: number };
@@ -131,10 +139,13 @@ export function MembersManager({
   paymentErrors: PaymentErrorEntry[];
   initialSegment: MemberSegment;
   initialQuery: string;
+  followups: { groups: FollowupGroup[]; available: boolean };
+  funnel: FunnelWindow[];
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
   const [seg, setSeg] = React.useState<MemberSegment>(initialSegment);
+  React.useEffect(() => setSeg(initialSegment), [initialSegment]);
   const [sort, setSort] = React.useState<Sort>(null);
   const [now] = React.useState(() => Date.now());
   const [dialog, setDialog] = React.useState<null | { kind: "extend" | "revoke"; m: MemberRow }>(null);
@@ -195,6 +206,9 @@ export function MembersManager({
           <StatCard label="Lead ร้อน" value={summary.hot} icon={<Flame />} tone="danger" hint="ยังไม่จ่าย แต่ดูหนักใน 7 วัน" />
         </div>
       </div>
+
+      <MemberFollowups groups={followups.groups} available={followups.available} />
+      <MemberFunnel windows={funnel} />
 
       {errors.length > 0 && (
         <Card id="payment-errors" className="scroll-mt-28 border-danger/30">
@@ -397,7 +411,7 @@ export function MembersManager({
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
                   {a.target && <span className="text-text-2"> · {a.target}</span>}
-                  {a.note && <span className="mt-0.5 block text-text-2">หมายเหตุ: {a.note}</span>}
+                  {a.note && <span className="mt-0.5 block text-text-2">หมายเหตุ: {auditNoteText(a.action, a.note)}</span>}
                 </span>
                 <span className="t-caption text-text-2">{a.admin}</span>
               </li>
@@ -429,7 +443,7 @@ function WatchCell({ m }: { m: MemberRow }) {
   if (!m.clips_started && !m.watch_sec) return <span className="text-text-2">—</span>;
   return (
     <span>
-      {formatNumber(m.clips_started)} คลิป · <span title="ประมาณจากความคืบหน้า">~{formatWatch(m.watch_sec)}</span>
+      {formatNumber(m.clips_started)} คลิป · <span title="ประมาณจากความคืบหน้า">{m.watch_sec >= 60 ? "~" : ""}{formatWatch(m.watch_sec)}</span>
       {m.clips_completed > 0 && <span className="t-caption block text-text-2">ดูจบ {formatNumber(m.clips_completed)}</span>}
     </span>
   );

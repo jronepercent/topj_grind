@@ -14,6 +14,7 @@ import {
   runScheduler,
 } from "@/lib/server/mutations";
 import { CATALOG_TAG, isLive, isUuid } from "@/lib/server/queries";
+import { isFollowupKind } from "@/components/studio/types";
 import { randomUUID } from "node:crypto";
 import { bunnyStreamEnabled, createBunnyUpload, syncBunnyStatus } from "@/lib/server/bunny";
 import { PODCAST_BUCKET, removeAudioObjects } from "@/lib/server/media";
@@ -727,6 +728,17 @@ export async function addMemberNoteAction(userId: string, body: string) {
     if (text.length > 2000) throw new HttpError(400, "โน้ตยาวเกิน 2,000 ตัวอักษร");
     must(await adminDb().from("member_notes").insert({ user_id: userId, author_id: a.id, body: text }), "add note");
     await audit(a.id, "member.note", "user", userId);
+    revalidatePath(`/studio/members/${userId}`);
+  });
+}
+
+export async function markFollowupAction(userId: string, kind: string) {
+  return admin(async (a) => {
+    if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
+    if (!isFollowupKind(kind)) throw new HttpError(400, "ประเภทไม่ถูกต้อง");
+    must(await adminDb().from("member_followups").insert({ user_id: userId, kind, admin_id: a.id }), "mark followup");
+    await audit(a.id, "member.followup", "user", userId, kind);
+    revalidatePath("/studio/members");
     revalidatePath(`/studio/members/${userId}`);
   });
 }

@@ -5,19 +5,23 @@ import { isLive } from "@/lib/server/queries";
 import { Avatar, EmptyState } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, DailyBars, PageHeader, StatCard, StudioThumb } from "@/components/studio/ui";
-import { dailyFromViews, membershipCounts, recentViews, studioContent, unansweredComments } from "./_lib/data";
+import { dailyFromViews, memberFollowups, memberRows, membershipCounts, recentViews, studioContent, unansweredComments } from "./_lib/data";
 import { formatCount, formatNumber, timeAgo, TYPE_LABEL } from "@/lib/format";
 
 export const metadata = { title: "Dashboard" };
 
 export default async function StudioDashboard() {
   const now = Date.now();
-  const [recent, counts, content, unanswered, paymentErrorsRes] = await Promise.all([
+  const [recent, counts, content, unanswered, paymentErrorsRes, todoCount] = await Promise.all([
     recentViews(28, undefined, now),
     membershipCounts(now),
     studioContent(),
     unansweredComments(5),
     adminDb().from("payment_errors").select("id", { count: "exact", head: true }).eq("resolved", false),
+    memberRows(now)
+      .then((rows) => memberFollowups(rows, now))
+      .then((f) => new Set(f.groups.flatMap((g) => g.items.map((i) => i.id))).size)
+      .catch(() => null),
   ]);
 
   const views28 = recent.length;
@@ -63,6 +67,19 @@ export default async function StudioDashboard() {
             />
           )}
         </div>
+      )}
+
+      {todoCount !== null && todoCount > 0 && (
+        <Link
+          href="/studio/members"
+          className="mb-3 flex items-center justify-between gap-3 rounded-[16px] border border-border bg-surface px-4 py-3 text-[14px] hover:bg-hover"
+        >
+          <span>
+            ต้องทำวันนี้ <b className="tnum font-semibold">{formatNumber(todoCount)}</b> คน
+            <span className="t-meta ml-2">สมาชิกที่ควรทักหรือตาม</span>
+          </span>
+          <ArrowUpRight className="size-4 shrink-0 text-text-2" aria-hidden />
+        </Link>
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

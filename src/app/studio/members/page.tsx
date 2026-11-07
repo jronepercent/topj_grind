@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/studio/ui";
 import { MembersManager, type AuditEntry, type PaymentErrorEntry } from "@/components/studio/members-manager";
 import type { AuditLog, PaymentError } from "@/lib/types";
 import { parseSegment } from "@/components/studio/types";
-import { fetchIn, memberRows, memberSummary } from "../_lib/data";
+import { fetchIn, memberFollowups, memberFunnel, memberRows, memberSummary } from "../_lib/data";
 
 export const metadata = { title: "สมาชิก" };
 
@@ -17,7 +17,8 @@ export default async function StudioMembersPage({ searchParams }: { searchParams
     db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(20),
     db.from("payment_errors").select("*").eq("resolved", false).order("created_at", { ascending: false }),
   ]);
-  const summary = await memberSummary(rows, now);
+  const [summary, followups] = await Promise.all([memberSummary(rows, now), memberFollowups(rows, now)]);
+  const funnel = memberFunnel(rows, now);
   const log = must(logRes, "audit log") as AuditLog[];
 
   // Names for the audit trail: admins + user / content / playlist targets.
@@ -64,7 +65,7 @@ export default async function StudioMembersPage({ searchParams }: { searchParams
   return (
     <div>
       <PageHeader title="สมาชิก" description="สถานะคำนวณจากวันหมดอายุเท่านั้น · ทุกการแก้ไขถูกบันทึกในประวัติการดำเนินการ" />
-      <MembersManager rows={rows} summary={summary} audit={audit} paymentErrors={paymentErrors} initialSegment={segment} initialQuery={sp.q ?? ""} />
+      <MembersManager rows={rows} summary={summary} audit={audit} paymentErrors={paymentErrors} initialSegment={segment} initialQuery={sp.q ?? ""} followups={followups} funnel={funnel} />
     </div>
   );
 }
