@@ -343,8 +343,8 @@ function UserMenu() {
           </Link>
         </DropdownItem>
         <DropdownItem asChild>
-          <Link href="/library/purchases">
-            <ShoppingBag /> สินค้าที่ซื้อ
+          <Link href="/owned">
+            <ShoppingBag /> สินค้าของฉัน
           </Link>
         </DropdownItem>
         <DropdownSeparator />

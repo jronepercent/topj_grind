@@ -8,7 +8,7 @@ import { OverviewSection } from "./_components/overview";
 const SECTIONS = ["history", "later", "liked", "courses", "purchases"];
 
 export default async function LibraryOverviewPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  // Old links: /library?tab=purchases -> /library/purchases (?tab=overview -> /library)
+  // Old links: /library?tab=history -> /library/history (purchases ends up at /owned)
   const { tab } = await searchParams;
   if (tab && SECTIONS.includes(tab)) redirect(`/library/${tab}`);
 

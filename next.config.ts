@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
         destination: "https://topjgrind.com/:path",
         permanent: true,
       },
+      // Purchases moved up to the "สินค้าของฉัน" hub tab (old receipt emails link here). Temporary, so the page can move again.
+      { source: "/library/purchases", destination: "/owned", permanent: false },
     ];
   },
   async rewrites() {

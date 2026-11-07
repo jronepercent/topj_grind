@@ -35,7 +35,7 @@ export async function sendPurchaseEmail(purchaseId: string): Promise<void> {
       email,
       title: prod.title as string,
       amountLabel: amount > 0 ? `ชำระแล้ว ${formatBaht(amount)}` : "ได้รับสิทธิ์จากทีมงาน",
-      url: siteUrl("/library/purchases"),
+      url: siteUrl("/owned"),
     });
     const send = sendEmails([{ to: email, subject: `ได้รับสินค้าแล้ว: ${prod.title as string}`, html, text }], {
       idempotencyPrefix: `purchase-${purchaseId}`,

@@ -17,7 +17,6 @@ const TABS = [
   { href: "/library/later", label: "ดูภายหลัง" },
   { href: "/library/liked", label: "ที่ถูกใจ" },
   { href: "/library/courses", label: "Playlist ที่กำลังเรียน" },
-  { href: "/library/purchases", label: "ที่ซื้อแล้ว" },
 ];
 
 export default async function LibraryLayout({ children }: { children: ReactNode }) {

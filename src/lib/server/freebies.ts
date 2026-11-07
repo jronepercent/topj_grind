@@ -59,6 +59,23 @@ export async function getFreebie(id: string, viewer?: Pick<Viewer, "is_admin"> |
   return toPublic(row);
 }
 
+/**
+ * Freebies this person has taken (one per freebie, latest take), for "สินค้าของฉัน". Removed / unpublished ones drop out.
+ * Admin takes are never logged (claimFreebie), so an admin's list is empty here by design.
+ */
+export async function myFreebies(userId: string): Promise<{ freebie: FreebiePublic; at: string }[]> {
+  if (!isUuid(userId)) return [];
+  const res = await adminDb().from("freebie_claims").select("freebie_id, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1000);
+  const rows = tolerate(res as unknown as DbResult<{ freebie_id: string; created_at: string }[]>, [], "my freebie claims");
+  const latest = new Map<string, string>();
+  for (const r of rows) if (!latest.has(r.freebie_id)) latest.set(r.freebie_id, r.created_at);
+  if (!latest.size) return [];
+  const items = await adminDb().from("freebies").select(PUBLIC_COLS).in("id", [...latest.keys()]).eq("status", "published").is("deleted_at", null);
+  return tolerate(items as unknown as DbResult<Row[]>, [], "my freebies")
+    .map((r) => ({ freebie: toPublic(r), at: latest.get(r.id)! }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
 /** Has this person taken it before? (The page says “รับไปแล้ว” and the button reads “โหลดอีกครั้ง”.) */
 export async function hasClaimed(userId: string | null | undefined, freebieId: string): Promise<boolean> {
   if (!userId || !isUuid(freebieId)) return false;

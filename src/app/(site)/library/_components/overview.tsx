@@ -46,7 +46,7 @@ export function OverviewSection({
       ) : (
         <div className="space-y-12">
           {purchases.length > 0 && (
-            <Shelf title="ที่ซื้อแล้ว" action={seeAll("/library/purchases")} itemClass="w-[160px] sm:w-[200px]">
+            <Shelf title="ที่ซื้อแล้ว" action={seeAll("/owned")} itemClass="w-[160px] sm:w-[200px]">
               {purchases.slice(0, 12).map((x) => (
                 <ProductCard key={x.id} product={x.product} variant="row" />
               ))}

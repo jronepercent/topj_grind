@@ -119,6 +119,27 @@ async function withOwned(items: ProductCardData[], userId: string | null | undef
   return items.map((p) => ({ ...p, owned: owned.has(p.id) }));
 }
 
+/**
+ * Free samples this person has downloaded (one per product, latest download time), for "สินค้าของฉัน".
+ * Products they have bought since are left out (the purchase row covers them), as are removed / unpublished ones.
+ */
+export async function mySamples(userId: string): Promise<{ product: ProductCardData; at: string }[]> {
+  if (!isUuid(userId)) return [];
+  const res = await adminDb().from("sample_downloads").select("product_id, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1000);
+  const rows = tolerate(res as unknown as { data: { product_id: string; created_at: string }[] | null; error: { code?: string; message: string } | null }, [], "sample downloads");
+  const latest = new Map<string, string>();
+  for (const r of rows) if (!latest.has(r.product_id)) latest.set(r.product_id, r.created_at);
+  if (!latest.size) return [];
+  const prods = await adminDb().from("products").select(CARD_COLS).in("id", [...latest.keys()]).eq("status", "published").is("deleted_at", null);
+  const cards = tolerate(prods as unknown as { data: CardRow[] | null; error: { code?: string; message: string } | null }, [], "sample products")
+    .map(card)
+    .filter((p) => p.has_sample);
+  return (await withOwned(cards, userId))
+    .filter((p) => !p.owned)
+    .map((p) => ({ product: p, at: latest.get(p.id)! }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
 /** Published products for the shop page. `userId` fills `owned` so cards can show “เป็นเจ้าของแล้ว”. */
 export async function listProducts(opts: { type?: ProductType; limit?: number; userId?: string | null } = {}): Promise<ProductCardData[]> {
   let items = await loadCards();

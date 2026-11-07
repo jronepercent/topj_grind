@@ -15,7 +15,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ productI
   if (!viewer) {
     // A clicked link: send people to sign in, then bring them back to their purchases.
     const login = new URL("/login", req.url);
-    login.searchParams.set("next", "/library/purchases");
+    login.searchParams.set("next", "/owned");
     return NextResponse.redirect(login, { status: 302, headers });
   }
   if (viewer.is_banned) return NextResponse.json({ error: "banned" }, { status: 403, headers });

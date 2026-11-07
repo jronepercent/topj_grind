@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { Download, ExternalLink, GraduationCap, Headphones, ShoppingBag, Trash2, X } from "lucide-react";
+import { Headphones, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { clearHistoryAction, setSaveHistoryAction, toggleSaveAction } from "@/app/actions";
 import { PlaylistCard, Thumb, type ProgressMap } from "@/components/cards/cards";
@@ -13,8 +13,6 @@ import { EmptyState, MemberBadge, SectionHeader, type ArtKind } from "@/componen
 import { Switch } from "@/components/ui/switch";
 import { useViewer } from "@/components/providers";
 import { contentHref, formatCount, formatDuration, thaiDate, TYPE_LABEL, showViews } from "@/lib/format";
-import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
-import { PRODUCT_TYPE_LABEL, deliveryInfo, formatBaht, productHref, type PurchaseView } from "@/lib/shop";
 import type { Content, PlaylistWithMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
@@ -232,83 +230,6 @@ export function CoursesSection({ courses }: { courses: PlaylistWithMeta[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-// ───── Purchases (shop) ─────
-
-export function PurchasesSection({ purchases }: { purchases: PurchaseView[] }) {
-  return (
-    <div className="pt-6">
-      {purchases.length === 0 ? (
-        <EmptyState
-          art="bookmark"
-          title="ยังไม่มีสินค้าที่ซื้อ"
-          body="E-book คอร์สเรียน และเทมเพลตที่คุณซื้อจากร้านค้าจะมารออยู่ที่นี่ ดาวน์โหลดซ้ำได้ตลอด"
-          action={
-            <Button asChild variant="inverse">
-              <Link href="/shop">ไปดูร้านค้า</Link>
-            </Button>
-          }
-        />
-      ) : (
-        <ul className="max-w-[900px] space-y-3">
-          {purchases.map((x) => (
-            <PurchaseRow key={x.id} x={x} />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/** One purchased product: what it is, when it was bought, and the way in (download / start learning). */
-function PurchaseRow({ x }: { x: PurchaseView }) {
-  const p = x.product;
-  const isCourse = p.product_type === "course" && !!p.course_playlist_id;
-  return (
-    <li className="flex gap-3 rounded-[16px] border border-border bg-surface p-3 sm:gap-4 sm:p-4">
-      <Link href={productHref(p.id)} className="relative aspect-[4/5] w-[72px] shrink-0 overflow-hidden rounded-[10px] bg-elevated sm:w-24" aria-label={p.title}>
-        {p.cover_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.cover_url} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" />
-        ) : (
-          <span className="flex size-full items-center justify-center text-text-2" aria-hidden>
-            <ShoppingBag className="size-5" strokeWidth={1.5} />
-          </span>
-        )}
-      </Link>
-      <div className="min-w-0 flex-1">
-        <p className="t-caption font-medium text-text-2">{PRODUCT_TYPE_LABEL[p.product_type]}</p>
-        <Link href={productHref(p.id)} className="rounded-md">
-          <h3 className="line-clamp-2 text-[15px] font-semibold leading-[21px] sm:text-[16px] sm:leading-6">{p.title}</h3>
-        </Link>
-        <p className="t-meta tnum mt-1">
-          ซื้อเมื่อ {thaiDate(x.paid_at)} · {x.amount > 0 ? formatBaht(x.amount) : "ฟรี"} · {PAYMENT_METHOD_LABEL[x.method]}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {isCourse ? (
-            <Button asChild variant="primary" size="sm">
-              <Link href={`/playlists/${p.course_playlist_id}`}>
-                <GraduationCap /> {deliveryInfo(p.product_type).libraryAction}
-              </Link>
-            </Button>
-          ) : null}
-          {p.has_file && (
-            <Button asChild variant={isCourse ? "secondary" : "primary"} size="sm">
-              <a href={`/api/shop/download/${p.id}`}>
-                <Download /> {isCourse ? "ดาวน์โหลดไฟล์ประกอบ" : deliveryInfo(p.product_type).libraryAction}
-              </a>
-            </Button>
-          )}
-          <Button asChild variant="ghost" size="sm">
-            <Link href={productHref(p.id)}>
-              ดูหน้าสินค้า <ExternalLink />
-            </Link>
-          </Button>
-        </div>
-      </div>
-    </li>
   );
 }
 

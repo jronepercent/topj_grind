@@ -52,17 +52,17 @@ export function EmailCard({ email }: { email: string }) {
   );
 }
 
-/** Shortcut to purchased products. */
+/** Shortcut to สินค้าของฉัน (purchases, freebies, samples). */
 export function PurchasesLink() {
   return (
     <Link
-      href="/library/purchases"
+      href="/owned"
       className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 transition-colors hover:bg-hover sm:p-5"
     >
       <ShoppingBag className="size-5 shrink-0" strokeWidth={1.75} aria-hidden />
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-semibold">สินค้าที่ซื้อ</span>
-        <span className="t-meta block">E-book คอร์ส และไฟล์ที่ซื้อไว้ ดาวน์โหลดซ้ำได้ตลอด</span>
+        <span className="block text-[15px] font-semibold">สินค้าของฉัน</span>
+        <span className="t-meta block">ของที่ซื้อ ของฟรี และไฟล์ตัวอย่าง ดาวน์โหลดซ้ำได้ตลอด</span>
       </span>
       <ChevronRight className="size-5 shrink-0 text-text-2" aria-hidden />
     </Link>
