@@ -24,22 +24,25 @@ export function InfiniteGrid({
   query,
   progress,
   empty,
+  firstPage = 24,
 }: {
+  /** how many items the server rendered up front (the next pages are always 24) */
+  firstPage?: number;
   initial: Content[];
   query: Omit<FeedQuery, "offset" | "limit">;
   progress?: ProgressMap;
   empty?: React.ReactNode;
 }) {
   const [items, setItems] = React.useState(initial);
-  const [done, setDone] = React.useState(initial.length < 24);
+  const [done, setDone] = React.useState(initial.length < firstPage);
   const [loading, setLoading] = React.useState(false);
   const sentinel = React.useRef<HTMLDivElement>(null);
   const key = JSON.stringify(query);
 
   React.useEffect(() => {
     setItems(initial);
-    setDone(initial.length < 24);
-  }, [initial, key]);
+    setDone(initial.length < firstPage);
+  }, [initial, key, firstPage]);
 
   React.useEffect(() => {
     const el = sentinel.current;

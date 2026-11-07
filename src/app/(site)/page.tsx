@@ -45,7 +45,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     has("continue") ? continueWatching(viewer?.id) : none,
     Promise.all(layout.map((s) => (s.type === "custom" ? getContentsByIds(s.content_ids) : Promise.resolve([])))),
     has("all") ? categories() : Promise.resolve([]),
-    has("all") ? listContent({ ...ALL_QUERY, limit: 24 }) : none,
+    has("all") ? listContent({ ...ALL_QUERY, limit: 12 }) : none,
   ]);
 
   const locked = !viewer?.is_member;
@@ -145,7 +145,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <section key={s.id} id="all-content" className="scroll-mt-16" aria-label={s.title}>
             <SectionHeader title={s.title} className="mb-1" />
             <HomeFeed categories={cats} initialFilter={filter} progress={progress}>
-              <InfiniteGrid initial={all} query={ALL_QUERY} progress={progress} />
+              <InfiniteGrid initial={all} firstPage={12} query={ALL_QUERY} progress={progress} />
             </HomeFeed>
           </section>
         );
@@ -160,7 +160,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <div className="mx-auto max-w-[1800px] space-y-9 overflow-x-clip px-4 pt-6 sm:space-y-11 sm:px-6 lg:px-8">
         {starter}
         {locked && <MemberPitch />}
-        {rows.filter(Boolean)}
+        {/* Below the first two sections: let the browser skip layout/paint until they scroll near. */}
+        {rows
+          .filter(Boolean)
+          .map((row, i) => (i < 2 ? row : <div key={(row as { key?: string }).key ?? i} className="tg-defer">{row}</div>))}
       </div>
     </div>
   );
