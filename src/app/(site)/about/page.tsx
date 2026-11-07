@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
 import { excerpt } from "@/lib/richtext";
 import { LEGAL_LINKS } from "@/lib/legal";
+import { TourButton } from "@/components/shell/tour-host";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await siteSettings();
@@ -121,6 +122,7 @@ export default async function AboutPage() {
       </div>
 
       <nav className="mx-auto mt-12 flex max-w-[1100px] flex-wrap gap-x-5 gap-y-2 border-t border-border pb-10 pt-6 text-[13px]" aria-label="นโยบาย">
+        <TourButton className="font-medium text-text underline-offset-4 hover:underline">ทัวร์เว็บ: อะไรอยู่ตรงไหน</TourButton>
         {LEGAL_LINKS.map((l) => (
           <Link key={l.href} href={l.href} className="text-text-2 underline-offset-4 hover:text-text hover:underline">
             {l.label}

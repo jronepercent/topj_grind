@@ -84,6 +84,16 @@ export interface OnboardingState {
  * Cheap single-row read. If migration 0020 is not applied yet the columns do not exist: report "already onboarded"
  * so nothing is shown (and nothing breaks) until the database is ready.
  */
+/**
+ * Site tour (migration 0026): true when the person has never finished or skipped it.
+ * If the column is missing (migration not applied) or the read fails, report "not due" so nothing pops up by mistake.
+ */
+export const tourDue = cache(async (userId: string): Promise<boolean> => {
+  const { data, error } = await adminDb().from("profiles").select("toured_at").eq("id", userId).maybeSingle();
+  if (error || !data) return false;
+  return !data.toured_at;
+});
+
 export const onboardingState = cache(async (userId: string): Promise<OnboardingState> => {
   const { data, error } = await adminDb().from("profiles").select("onboarding_stage, onboarded_at").eq("id", userId).maybeSingle();
   if (error || !data) return { stage: null, onboarded: true };

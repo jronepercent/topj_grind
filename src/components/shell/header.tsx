@@ -8,6 +8,7 @@ import {
   Bell,
   BookOpen,
   Clapperboard,
+  Compass,
   LayoutDashboard,
   Library,
   LogOut,
@@ -38,6 +39,7 @@ import { thaiDate } from "@/lib/format";
 import type { Notification, ThemePref } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
+import { startTour } from "@/lib/tour";
 
 export function Header({ unread }: { unread: number }) {
   const { viewer } = useViewer();
@@ -62,25 +64,25 @@ export function Header({ unread }: { unread: number }) {
         </div>
       ) : (
         <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
-          <button onClick={toggleNav} className="hidden rounded-full p-2 hover:bg-hover sm:inline-flex" aria-label="เมนู">
+          <button onClick={toggleNav} data-tour="menu" className="hidden rounded-full p-2 hover:bg-hover sm:inline-flex" aria-label="เมนู">
             <Menu className="size-[22px]" strokeWidth={1.75} />
           </button>
           <Logo className="ml-2 sm:ml-1" />
 
-          <div className="mx-auto hidden w-full max-w-[560px] px-4 sm:block">
+          <div className="mx-auto hidden w-full max-w-[560px] px-4 sm:block" data-tour="search">
             <React.Suspense>
               <SearchBox />
             </React.Suspense>
           </div>
 
           <div className="ml-auto flex items-center gap-1 sm:ml-0">
-            <button onClick={() => setMobileSearch(true)} className="rounded-full p-2 hover:bg-hover sm:hidden" aria-label="ค้นหา">
+            <button onClick={() => setMobileSearch(true)} data-tour="search-btn" className="rounded-full p-2 hover:bg-hover sm:hidden" aria-label="ค้นหา">
               <Search className="size-[22px]" strokeWidth={1.75} />
             </button>
             {viewer?.is_admin && <CreateMenu />}
             {!viewer?.is_member && (
               <Button asChild variant="member" size="sm" className="mx-1 hidden sm:inline-flex">
-                <Link href={subscribeHref}>สมัครสมาชิก</Link>
+                <Link href={subscribeHref} data-tour="subscribe">สมัครสมาชิก</Link>
               </Button>
             )}
             {viewer && <NotificationBell initialUnread={unread} />}
@@ -238,7 +240,7 @@ function NotificationBell({ initialUnread }: { initialUnread: number }) {
       }}
     >
       <DropdownTrigger asChild>
-        <button className="relative rounded-full p-2 hover:bg-hover" aria-label={`การแจ้งเตือน${unread ? ` ยังไม่อ่าน ${unread} รายการ` : ""}`}>
+        <button data-tour="bell" className="relative rounded-full p-2 hover:bg-hover" aria-label={`การแจ้งเตือน${unread ? ` ยังไม่อ่าน ${unread} รายการ` : ""}`}>
           <Bell className="size-[22px]" strokeWidth={1.75} />
           {unread > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-danger ring-2 ring-[var(--bg)]" />}
         </button>
@@ -303,7 +305,7 @@ function UserMenu() {
   return (
     <Dropdown>
       <DropdownTrigger asChild>
-        <button className="ml-1 rounded-full p-0.5 hover:ring-2 hover:ring-[var(--border-strong)]" aria-label="เมนูบัญชี">
+        <button data-tour="account" className="ml-1 rounded-full p-0.5 hover:ring-2 hover:ring-[var(--border-strong)]" aria-label="เมนูบัญชี">
           <Avatar src={viewer.avatar_url} name={viewer.display_name} size={32} />
         </button>
       </DropdownTrigger>
@@ -367,6 +369,9 @@ function UserMenu() {
           ))}
         </div>
         <DropdownSeparator />
+        <DropdownItem onSelect={() => window.setTimeout(() => startTour("menu"), 150)}>
+          <Compass /> ทัวร์เว็บอีกครั้ง
+        </DropdownItem>
         <DropdownItem
           onSelect={async () => {
             await logoutAction();

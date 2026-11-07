@@ -5,6 +5,7 @@ import { Header } from "./header";
 import { BottomTabs, Sidebar, sidebarPad } from "./nav";
 import { ExpiryBanner } from "./expiry-banner";
 import { DemoSwitcher } from "./demo-switcher";
+import { TourHost } from "./tour-host";
 import { ShareDialog } from "@/components/content/share-dialog";
 import dynamic from "next/dynamic";
 import { useUI, usePlayer } from "@/lib/stores/player";
@@ -39,6 +40,7 @@ export function ShellClient({ unread, demo, children }: { unread: number; demo: 
       {hasMini && <GlobalPlayer />}
       <ShareDialog />
       <BottomTabs />
+      <TourHost />
       {demo && <DemoSwitcher />}
     </>
   );

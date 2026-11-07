@@ -30,7 +30,11 @@ export type AnalyticsEvent =
   | "sample_downloaded"
   | "freebie_claimed"
   | "community_post_created"
-  | "testimonial_played";
+  | "testimonial_played"
+  | "tour_started"
+  | "tour_step_viewed"
+  | "tour_completed"
+  | "tour_skipped";
 
 /**
  * PostHog project token (US Cloud, project 717369). It is a public client token: it ships in every page's JS anyway,

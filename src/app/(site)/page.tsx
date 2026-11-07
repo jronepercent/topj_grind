@@ -16,7 +16,8 @@ import { ProductsRow } from "@/components/home/products-row";
 import { FreebiesRow } from "@/components/home/freebies-row";
 import { listFreebies } from "@/lib/server/freebies";
 import { OnboardingCard } from "@/components/home/onboarding-card";
-import { onboardingState, pathFor } from "@/lib/server/onboarding";
+import { onboardingState, pathFor, tourDue } from "@/lib/server/onboarding";
+import { TourAutoStart } from "@/components/shell/tour-host";
 import { trending } from "@/lib/server/recommend";
 import { stageInfo } from "@/lib/onboarding";
 import { MemberPitch } from "@/components/membership/member-pitch";
@@ -38,7 +39,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     // Signed-in only: their answer to "ตอนนี้คุณอยู่ตรงไหน" and the matching starter path (cached settings + one profile row).
     // Never for admins: the owner must not be asked (or have the answer counted in the funnel).
     viewer && !viewer.is_admin
-      ? onboardingState(viewer.id).then(async (st) => ({ ...st, path: st.stage ? await pathFor(st.stage).catch(() => []) : [] }))
+      ? onboardingState(viewer.id).then(async (st) => ({
+          ...st,
+          path: st.stage ? await pathFor(st.stage).catch(() => []) : [],
+          // Site tour: only after "ตอนนี้คุณอยู่ตรงไหน" is answered or skipped, so the two never pop up together.
+          tourDue: st.onboarded ? await tourDue(viewer.id).catch(() => false) : false,
+        }))
       : Promise.resolve(null),
     heroSlides(),
     has("latest") ? latestMixed(SPOTLIGHT_COUNT) : none,
@@ -183,6 +189,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {locked && <MemberPitch />}
         {rows.filter(Boolean)}
       </div>
+      {onboarding?.tourDue && <TourAutoStart />}
     </div>
   );
 }

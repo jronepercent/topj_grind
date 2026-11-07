@@ -9,17 +9,17 @@ import { useUI } from "@/lib/stores/player";
 import { cn } from "@/lib/utils";
 import { LEGAL_LINKS } from "@/lib/legal";
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> };
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; tour?: string };
 
 const PRIMARY: NavItem[] = [
-  { href: "/", label: "หน้าแรก", icon: House },
-  { href: "/community", label: "ชุมชน", icon: MessagesSquare },
-  { href: "/podcasts", label: "พอดแคสต์", icon: Podcast },
+  { href: "/", label: "หน้าแรก", icon: House, tour: "home" },
+  { href: "/community", label: "ชุมชน", icon: MessagesSquare, tour: "community" },
+  { href: "/podcasts", label: "พอดแคสต์", icon: Podcast, tour: "podcasts" },
   { href: "/playlists", label: "Playlist", icon: ListVideo },
   { href: "/shop", label: "ร้านค้า", icon: ShoppingBag },
   { href: "/free", label: "ของฟรี", icon: Gift },
 ];
-const YOU: NavItem[] = [{ href: "/library", label: "คลังของฉัน", icon: Library }];
+const YOU: NavItem[] = [{ href: "/library", label: "คลังของฉัน", icon: Library, tour: "library" }];
 const MORE: NavItem[] = [{ href: "/about", label: "เกี่ยวกับช่อง", icon: Info }];
 
 /** Sidebar: each item is active on its own path (and sub-paths). Library sub-pages and the shop/free pages never light each other. */
@@ -40,13 +40,14 @@ function useTabActive() {
 function FullNav({ onNavigate }: { onNavigate?: () => void }) {
   const isActive = useActive();
   const group = (items: NavItem[]) =>
-    items.map(({ href, label, icon: Icon }) => {
+    items.map(({ href, label, icon: Icon, tour }) => {
       const active = isActive(href);
       return (
         <Link
           key={href}
           href={href}
           onClick={onNavigate}
+          data-tour={tour && `nav-${tour}`}
           aria-current={active ? "page" : undefined}
           className={cn(
             "flex h-10 items-center gap-5 rounded-[10px] px-3 text-[14px] transition-colors hover:bg-hover",
@@ -81,12 +82,13 @@ function MiniNav() {
   const isActive = useActive();
   return (
     <nav className="flex flex-col gap-1 px-1 py-2" aria-label="เมนูหลัก">
-      {[...PRIMARY, YOU[0]].map(({ href, label, icon: Icon }) => {
+      {[...PRIMARY, YOU[0]].map(({ href, label, icon: Icon, tour }) => {
         const active = isActive(href);
         return (
           <Link
             key={href}
             href={href}
+            data-tour={tour && `nav-${tour}`}
             aria-current={active ? "page" : undefined}
             className="flex flex-col items-center gap-1 rounded-[10px] py-4 text-[10px] hover:bg-hover"
           >
@@ -155,10 +157,10 @@ export function sidebarPad(sidebar: "auto" | "full" | "mini", hidden: boolean) {
 }
 
 const TABS: NavItem[] = [
-  { href: "/", label: "หน้าแรก", icon: House },
-  { href: "/community", label: "ชุมชน", icon: MessagesSquare },
-  { href: "/podcasts", label: "พอดแคสต์", icon: Podcast },
-  { href: "/library", label: "คลัง", icon: Library },
+  { href: "/", label: "หน้าแรก", icon: House, tour: "home" },
+  { href: "/community", label: "ชุมชน", icon: MessagesSquare, tour: "community" },
+  { href: "/podcasts", label: "พอดแคสต์", icon: Podcast, tour: "podcasts" },
+  { href: "/library", label: "คลัง", icon: Library, tour: "library" },
   { href: "/account", label: "บัญชี", icon: User },
 ];
 
@@ -171,12 +173,13 @@ export function BottomTabs() {
       aria-label="แท็บหลัก"
     >
       <div className="grid h-14 grid-cols-5">
-        {TABS.map(({ href, label, icon: Icon }) => {
+        {TABS.map(({ href, label, icon: Icon, tour }) => {
           const active = isActive(href);
           return (
             <Link
               key={href}
               href={href}
+              data-tour={tour && `tab-${tour}`}
               aria-current={active ? "page" : undefined}
               className="flex flex-col items-center justify-center gap-0.5 text-[10px]"
             >
