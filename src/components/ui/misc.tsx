@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Lock } from "lucide-react";
+import { Crown, Flame, Gem, Lock, Sprout, Trophy, Zap } from "lucide-react";
+import { MEMBER_TIERS, memberTier } from "@/lib/community";
 import { cn } from "@/lib/utils";
 
 export function Skeleton({ className }: { className?: string }) {
@@ -36,6 +37,32 @@ export function MemberBadge({ locked, className, label = "สมาชิก" }:
       )}
     >
       {locked && <Lock className="size-3" strokeWidth={2.25} aria-hidden />}
+      {label}
+    </span>
+  );
+}
+
+const TIER_ICONS = [Sprout, Zap, Flame, Gem, Crown, Trophy] as const;
+
+/**
+ * YouTube-style loyalty badge next to a member's name in ชุมชน. The icon and fill level up with tenure:
+ * new → 1 → 2 → 6 months (tinted), then 1 → 2 years (solid gold). Free accounts get no badge.
+ */
+export function MemberTierBadge({ since, className }: { since: string | null; className?: string }) {
+  const tier = memberTier(since);
+  const { label } = MEMBER_TIERS[tier];
+  const Icon = TIER_ICONS[tier];
+  const solid = tier >= 4;
+  return (
+    <span
+      title={label}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4",
+        solid ? "bg-member text-on-member" : tier >= 3 ? "bg-member/25 text-member ring-1 ring-member/40" : "bg-member/15 text-member",
+        className,
+      )}
+    >
+      <Icon className="size-3" strokeWidth={2.5} aria-hidden fill={tier >= 2 ? "currentColor" : "none"} />
       {label}
     </span>
   );

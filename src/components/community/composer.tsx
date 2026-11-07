@@ -19,10 +19,10 @@ interface Picked {
   img: PreparedImage | null; // null while the image is still being resized
 }
 
-type ComposerViewer = { display_name: string; avatar_url: string | null; is_member: boolean };
+type ComposerViewer = { display_name: string; avatar_url: string | null; is_member: boolean; is_banned?: boolean };
 
 /**
- * Post box at the top of the feed (members) — also used by the Studio "โพสต์รูป" composer, which has no
+ * Post box at the top of the feed (anyone signed in; images are members-only) — also used by the Studio "โพสต์รูป" composer, which has no
  * site provider, so it passes `asViewer`.
  */
 export function PostComposer({
@@ -39,7 +39,7 @@ export function PostComposer({
   const ctx = useOptionalViewer();
   const viewer: ComposerViewer | null = ctx ? ctx.viewer : asViewer ? { ...asViewer, is_member: true } : null;
   if (!viewer) return <GuestBox className={className} />;
-  if (!viewer.is_member) return <MemberLockBox viewer={viewer} className={className} />;
+  if (viewer.is_banned) return null;
   return <ComposerBox viewer={viewer} onPosted={onPosted} placeholder={placeholder} className={className} />;
 }
 
@@ -58,30 +58,14 @@ function GuestBox({ className }: { className?: string }) {
   );
 }
 
-function MemberLockBox({ viewer, className }: { viewer: ComposerViewer; className?: string }) {
-  const subscribeHref = useSubscribeHref();
-  return (
-    <div className={cn("flex flex-wrap items-center gap-3 rounded-[16px] border border-border bg-surface p-4", className)}>
-      <Avatar src={viewer.avatar_url} name={viewer.display_name} size={40} />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-[14px] font-semibold">
-          <Lock className="size-4 text-member" strokeWidth={2} aria-hidden /> โพสต์และคอมเมนต์ได้เฉพาะสมาชิก
-        </p>
-        <p className="t-meta">ดู ถูกใจ และอ่านโพสต์ได้ฟรี สมัครสมาชิกเพื่อร่วมคุยกับ JR และสมาชิกคนอื่น</p>
-      </div>
-      <Button asChild variant="member" size="sm">
-        <Link href={subscribeHref}>สมัครสมาชิก</Link>
-      </Button>
-    </div>
-  );
-}
-
 function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: ComposerViewer; onPosted: (p: PostView) => void; placeholder: string; className?: string }) {
   const [text, setText] = React.useState("");
   const [picked, setPicked] = React.useState<Picked[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const subscribeHref = useSubscribeHref();
+  const canImages = viewer.is_member;
   const areaRef = React.useRef<HTMLTextAreaElement>(null);
   const previews = React.useRef<string[]>([]);
 
@@ -94,6 +78,7 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
   React.useEffect(() => () => previews.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   const addFiles = async (files: File[]) => {
+    if (!canImages) return toast("แนบรูปได้เฉพาะสมาชิก — พิมพ์ข้อความโพสต์ได้เลย");
     const room = POST_LIMITS.images - picked.length;
     if (room <= 0) return toast(`แนบรูปได้ไม่เกิน ${POST_LIMITS.images} รูป`);
     const take = files.filter((f) => f.type.startsWith("image/")).slice(0, room);
@@ -171,7 +156,7 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {
               const files = [...e.clipboardData.files];
-              if (files.length) {
+              if (files.length && canImages) {
                 e.preventDefault();
                 void addFiles(files);
               }
@@ -220,10 +205,18 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
                 e.target.value = "";
               }}
             />
-            <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={busy || picked.length >= POST_LIMITS.images}>
-              <ImagePlus /> รูปภาพ
-              {picked.length > 0 && <span className="tnum text-text-2">{picked.length}/{POST_LIMITS.images}</span>}
-            </Button>
+            {canImages ? (
+              <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={busy || picked.length >= POST_LIMITS.images}>
+                <ImagePlus /> รูปภาพ
+                {picked.length > 0 && <span className="tnum text-text-2">{picked.length}/{POST_LIMITS.images}</span>}
+              </Button>
+            ) : (
+              <Button asChild variant="ghost" size="sm" title="แนบรูปได้เฉพาะสมาชิก">
+                <Link href={subscribeHref}>
+                  <Lock className="text-member" /> รูปภาพ <span className="text-member">สมาชิก</span>
+                </Link>
+              </Button>
+            )}
             {text.length > POST_LIMITS.caption * 0.8 && (
               <span className={cn("t-caption tnum", over ? "text-danger" : "text-text-2")}>
                 {formatNumber(text.length)}/{formatNumber(POST_LIMITS.caption)}

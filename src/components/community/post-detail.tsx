@@ -20,7 +20,7 @@ export function PostDetail({ initial, comments }: { initial: PostView; comments:
           else setPost((x) => ({ ...x, ...p }));
         }}
       />
-      <PostComments postId={post.id} initial={comments} count={post.comment_count} lockedText="คอมเมนต์และตอบกลับได้เฉพาะสมาชิก" />
+      <PostComments postId={post.id} initial={comments} count={post.comment_count} />
     </div>
   );
 }

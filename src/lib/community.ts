@@ -19,6 +19,34 @@ export interface PostAuthor {
   avatar_url: string | null;
   is_admin: boolean;
   is_member: boolean;
+  /** When an active member first paid (ISO), for the tenure badge. null for non-members or unknown. */
+  member_since: string | null;
+}
+
+/**
+ * YouTube-style loyalty badges: a member's badge levels up with how long they have been a member.
+ * Ordered from newest to oldest; `months` is the minimum full months since the first payment.
+ */
+export const MEMBER_TIERS = [
+  { months: 0, label: "สมาชิกใหม่" },
+  { months: 1, label: "สมาชิก 1 เดือน" },
+  { months: 2, label: "สมาชิก 2 เดือน" },
+  { months: 6, label: "สมาชิก 6 เดือน" },
+  { months: 12, label: "สมาชิก 1 ปี" },
+  { months: 24, label: "สมาชิก 2 ปี" },
+] as const;
+
+/** Index into MEMBER_TIERS for a member who first paid at `since` (null → newest tier). */
+export function memberTier(since: string | null, now = Date.now()): number {
+  if (!since) return 0;
+  const t = new Date(since).getTime();
+  if (!Number.isFinite(t)) return 0;
+  const months = Math.floor((now - t) / (30.44 * 86_400_000));
+  let tier = 0;
+  MEMBER_TIERS.forEach((x, i) => {
+    if (months >= x.months) tier = i;
+  });
+  return tier;
 }
 
 /** A community post as the feed renders it. */

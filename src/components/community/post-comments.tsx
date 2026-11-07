@@ -1,12 +1,10 @@
 "use client";
 import * as React from "react";
-import Link from "next/link";
 import { EllipsisVertical, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useViewer } from "@/components/providers";
-import { useSubscribeHref } from "@/components/content/paywall";
 import { RichText } from "@/components/content/rich-text";
-import { Avatar, CreatorBadge, EmptyState, MemberBadge } from "@/components/ui/misc";
+import { Avatar, CreatorBadge, EmptyState, MemberTierBadge } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from "@/components/ui/dropdown";
 import {
@@ -28,18 +26,16 @@ interface Props {
   initial: { items: PostCommentView[]; total: number; hasMore: boolean };
   /** Header count (the post's comment_count, replies included). */
   count: number;
-  /** Shown instead of the box when a guest / non-member is looking. */
-  lockedText?: string;
 }
 
-/** Comments for a community post or an article (post_comments). One level of replies. */
-export function PostComments({ postId, initial, count, lockedText = "คอมเมนต์และตอบกลับได้เฉพาะสมาชิก" }: Props) {
+/** Comments for a community post or an article (post_comments). One level of replies. Anyone signed in may write. */
+export function PostComments({ postId, initial, count }: Props) {
   const { viewer } = useViewer();
   const [items, setItems] = React.useState(initial.items);
   const [total, setTotal] = React.useState(count);
   const [hasMore, setHasMore] = React.useState(initial.hasMore);
   const [loading, setLoading] = React.useState(false);
-  const canComment = !!viewer?.is_member;
+  const canComment = !!viewer && !viewer.is_banned;
 
   const loadMore = async () => {
     setLoading(true);
@@ -85,7 +81,7 @@ export function PostComments({ postId, initial, count, lockedText = "คอม�
     <section id="comments" className="scroll-mt-32" aria-label="ความคิดเห็น">
       <h2 className="t-h2 tnum mb-5">ความคิดเห็น {formatNumber(total)} รายการ</h2>
 
-      {canComment ? <Box onSubmit={submitTop} /> : <Gate text={lockedText} />}
+      {canComment ? <Box onSubmit={submitTop} /> : <Gate />}
 
       <div className="mt-6 space-y-6">
         {items.length === 0 && <EmptyState art="comment" title="ยังไม่มีความคิดเห็น" body="เป็นคนแรกที่แสดงความคิดเห็น" className="py-8" />}
@@ -118,9 +114,8 @@ export function PostComments({ postId, initial, count, lockedText = "คอม�
   );
 }
 
-function Gate({ text }: { text: string }) {
+function Gate() {
   const { viewer, requireAuth } = useViewer();
-  const href = useSubscribeHref();
   if (!viewer)
     return (
       <button onClick={() => requireAuth("เข้าสู่ระบบเพื่อแสดงความคิดเห็น")} className="flex w-full items-center gap-3 text-left">
@@ -129,13 +124,7 @@ function Gate({ text }: { text: string }) {
       </button>
     );
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-[12px] bg-surface px-4 py-3 text-[14px]">
-      <MemberBadge locked />
-      {text}
-      <Link href={href} className="ml-auto font-semibold text-member hover:underline">
-        สมัครสมาชิก
-      </Link>
-    </div>
+    <div className="rounded-[12px] bg-surface px-4 py-3 text-[14px] text-text-2">บัญชีนี้ถูกระงับการแสดงความคิดเห็น</div>
   );
 }
 
@@ -266,7 +255,7 @@ function CommentItem({
             {c.author.is_admin ? settings.channel_name : c.author.display_name}
           </span>
           {c.author.is_admin && <CreatorBadge />}
-          {c.author.is_member && <MemberBadge />}
+          {c.author.is_member && <MemberTierBadge since={c.author.member_since} />}
           <span className="t-caption text-text-2">
             <TimeAgo iso={c.created_at} />
             {c.edited_at && " (แก้ไขแล้ว)"}

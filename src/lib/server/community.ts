@@ -7,7 +7,8 @@ import type { Viewer } from "@/lib/types";
 
 /**
  * ชุมชน (community posts) + บทความ (articles) — one `posts` table, see migration 0011.
- *  - Community reads/writes go through userDb, so RLS is the real gate (sign-in to read, members to post/comment).
+ *  - Community reads/writes go through userDb, so RLS is the real gate (sign-in to read, post and comment;
+ *    images on posts are members-only, see 0018).
  *  - Article listings use adminDb with an explicit column list, because a members-only article must still show
  *    its title / excerpt / lock to non-members. The body is only returned when the viewer may read it.
  */
@@ -36,16 +37,26 @@ async function notifyUser(n: { user_id: string; type: string; title: string; bod
 // ───────────────────────── Authors ─────────────────────────
 type ProfileEmbed = { id: string; display_name: string | null; avatar_url: string | null; role: string } | null;
 
-async function memberIds(ids: string[]): Promise<Set<string>> {
-  if (!ids.length) return new Set();
-  const { data } = await adminDb().from("subscriptions").select("user_id").in("user_id", ids).gt("expires_at", nowIso());
-  return new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
+/** Active members among `ids` → when they first paid (for the tenure badge). Non-members are absent. */
+type Members = Map<string, string | null>;
+async function memberIds(ids: string[]): Promise<Members> {
+  if (!ids.length) return new Map();
+  const { data } = await adminDb().from("subscriptions").select("user_id, first_paid_at").in("user_id", ids).gt("expires_at", nowIso());
+  return new Map((data ?? []).map((r: { user_id: string; first_paid_at: string | null }) => [r.user_id, r.first_paid_at]));
 }
 
-function toAuthor(p: ProfileEmbed, fallbackId: string, members: Set<string>): PostAuthor {
+function toAuthor(p: ProfileEmbed, fallbackId: string, members: Members): PostAuthor {
   const id = p?.id ?? fallbackId;
   const isAdmin = p?.role === "admin";
-  return { id, display_name: p?.display_name || "สมาชิก", avatar_url: p?.avatar_url ?? null, is_admin: isAdmin, is_member: !isAdmin && members.has(id) };
+  const isMember = !isAdmin && members.has(id);
+  return {
+    id,
+    display_name: p?.display_name || "ผู้ใช้",
+    avatar_url: p?.avatar_url ?? null,
+    is_admin: isAdmin,
+    is_member: isMember,
+    member_since: isMember ? (members.get(id) ?? null) : null,
+  };
 }
 
 const PROFILE = "author:profiles!author_id(id, display_name, avatar_url, role)";
@@ -137,9 +148,10 @@ function assertOwnImages(urls: string[], folder: string) {
 }
 
 export async function createCommunityPost(viewer: Viewer, input: { body: string; images: string[] }): Promise<PostView> {
-  if (!viewer.is_member) throw new HttpError(403, "โพสต์ได้เฉพาะสมาชิก");
+  if (viewer.is_banned) throw new HttpError(403, "บัญชีนี้ถูกระงับการโพสต์");
   const body = input.body.trim();
   const images = input.images ?? [];
+  if (images.length && !viewer.is_member) throw new HttpError(403, "แนบรูปได้เฉพาะสมาชิก");
   if (!body && !images.length) throw new HttpError(400, "เขียนข้อความหรือเพิ่มรูปอย่างน้อย 1 อย่าง");
   if (body.length > POST_LIMITS.caption) throw new HttpError(400, `ข้อความยาวเกิน ${POST_LIMITS.caption.toLocaleString("th-TH")} ตัวอักษร`);
   if (images.length > POST_LIMITS.images) throw new HttpError(400, `แนบรูปได้ไม่เกิน ${POST_LIMITS.images} รูป`);
@@ -202,7 +214,7 @@ type CommentRow = {
   author: ProfileEmbed;
 };
 
-function commentView(r: CommentRow, members: Set<string>, replies: PostCommentView[] = []): PostCommentView {
+function commentView(r: CommentRow, members: Members, replies: PostCommentView[] = []): PostCommentView {
   return {
     id: r.id,
     post_id: r.post_id,
@@ -256,7 +268,7 @@ export async function createPostComment(viewer: Viewer, postId: string, bodyIn: 
   const body = bodyIn.trim();
   if (!body) throw new HttpError(400, "กรุณาพิมพ์ข้อความ");
   if (body.length > POST_LIMITS.comment) throw new HttpError(400, "ข้อความยาวเกิน 1,000 ตัวอักษร");
-  if (!viewer.is_member) throw new HttpError(403, "คอมเมนต์ได้เฉพาะสมาชิก");
+  if (viewer.is_banned) throw new HttpError(403, "บัญชีนี้ถูกระงับการแสดงความคิดเห็น");
 
   const { data: post } = await adminDb()
     .from("posts")
@@ -303,7 +315,7 @@ export async function createPostComment(viewer: Viewer, postId: string, bodyIn: 
       image_url: image,
     });
   }
-  return commentView(row as unknown as CommentRow, new Set(viewer.is_member && !viewer.is_admin ? [viewer.id] : []));
+  return commentView(row as unknown as CommentRow, viewer.is_member && !viewer.is_admin ? await memberIds([viewer.id]) : new Map());
 }
 
 export async function editPostComment(viewer: Viewer, id: string, bodyIn: string) {
@@ -361,7 +373,7 @@ type ArticleRow = {
   author: ProfileEmbed;
 };
 
-function articleView(r: ArticleRow, members: Set<string>, canReadBody: boolean): ArticleView {
+function articleView(r: ArticleRow, members: Members, canReadBody: boolean): ArticleView {
   return {
     id: r.id,
     title: r.title ?? "",

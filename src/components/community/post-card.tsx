@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useViewer } from "@/components/providers";
 import { RichText } from "@/components/content/rich-text";
 import { ConfirmDialog } from "@/components/studio/confirm";
-import { Avatar, CreatorBadge, MemberBadge } from "@/components/ui/misc";
+import { Avatar, CreatorBadge, MemberTierBadge } from "@/components/ui/misc";
 import { Dropdown, DropdownContent, DropdownItem, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { ImageCarousel } from "./image-carousel";
 import { isTap, touchStart } from "./tap";
@@ -132,7 +132,7 @@ export function PostCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="min-w-0 max-w-full truncate text-[14px] font-semibold">{name}</span>
             {post.author.is_admin && <CreatorBadge />}
-            {post.author.is_member && <MemberBadge />}
+            {post.author.is_member && <MemberTierBadge since={post.author.member_since} />}
           </div>
           <p className="t-caption flex items-center gap-1.5 text-text-2">
             <Link href={href} className="hover:underline">

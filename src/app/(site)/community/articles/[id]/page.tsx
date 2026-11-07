@@ -87,7 +87,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
 
       {comments && (
         <div className="mt-16 border-t border-border pt-10">
-          <PostComments postId={a.id} initial={comments} count={a.comment_count} lockedText="คอมเมนต์และคุยกับ JR ได้เฉพาะสมาชิก" />
+          <PostComments postId={a.id} initial={comments} count={a.comment_count} />
         </div>
       )}
     </article>
