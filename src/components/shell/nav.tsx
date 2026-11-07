@@ -21,18 +21,22 @@ const PRIMARY: NavItem[] = [
 ];
 const YOU: NavItem[] = [
   { href: "/library", label: "คลังของฉัน", icon: Library },
-  { href: "/library?tab=purchases", label: "สินค้าที่ซื้อ", icon: ShoppingBag },
-  { href: "/library?tab=history", label: "ประวัติ", icon: History },
-  { href: "/library?tab=later", label: "ดูภายหลัง", icon: Clock },
+  { href: "/library/purchases", label: "สินค้าที่ซื้อ", icon: ShoppingBag },
+  { href: "/library/history", label: "ประวัติ", icon: History },
+  { href: "/library/later", label: "ดูภายหลัง", icon: Clock },
 ];
 const MORE: NavItem[] = [{ href: "/about", label: "เกี่ยวกับช่อง", icon: Info }];
+
+// Library sub-pages that have their own sidebar item; "คลังของฉัน" stays active only on the rest (overview, liked, courses).
+const LIBRARY_OWN = ["/library/purchases", "/library/history", "/library/later"];
 
 function useActive() {
   const pathname = usePathname();
   return (href: string) => {
-    const base = href.split("?")[0];
-    if (href.includes("?")) return false;
-    return base === "/" ? pathname === "/" : pathname.startsWith(base);
+    if (href === "/") return pathname === "/";
+    if (LIBRARY_OWN.includes(href)) return pathname === href;
+    if (href === "/library") return pathname.startsWith("/library") && !LIBRARY_OWN.includes(pathname);
+    return pathname.startsWith(href);
   };
 }
 

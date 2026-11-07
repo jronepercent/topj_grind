@@ -257,7 +257,7 @@ function UserMenu() {
           </Link>
         </DropdownItem>
         <DropdownItem asChild>
-          <Link href="/library?tab=purchases">
+          <Link href="/library/purchases">
             <ShoppingBag /> สินค้าที่ซื้อ
           </Link>
         </DropdownItem>

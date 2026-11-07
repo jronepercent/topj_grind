@@ -35,7 +35,7 @@ export default async function ProductCheckoutPage({
   const product = await getProduct(id, viewer);
   if (!product || product.status !== "published") notFound();
   // Already theirs: no second payment, straight to the library.
-  if (product.owned) redirect("/library?tab=purchases");
+  if (product.owned) redirect("/library/purchases");
 
   const mode = productCheckoutMode(await productPaymentUrl(id));
   const line = mode === "closed" ? ((await siteSettings()).socials.find((x) => x.key === "line" && /^https?:\/\//i.test(x.url))?.url ?? null) : null;

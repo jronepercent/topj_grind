@@ -60,7 +60,7 @@ export async function clearHistoryAction(contentId?: string) {
   return run(async () => {
     const v = await requireUser();
     await M.clearHistory(v.id, contentId);
-    revalidatePath("/library");
+    revalidatePath("/library", "layout");
   });
 }
 

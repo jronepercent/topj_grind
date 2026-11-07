@@ -277,7 +277,7 @@ export async function manualExtend(admin: Viewer, userId: string, opts: { days?:
     "extend",
   );
   await audit(admin.id, opts.until ? "membership.set_date" : "membership.extend", "user", userId, note);
-  await notify({ user_id: userId, type: "payment", title: "ต่ออายุสมาชิกแล้ว", body: `สมาชิกถึงวันที่ ${thaiDate(expires_at)}`, link: "/account", image_url: null });
+  await notify({ user_id: userId, type: "payment", title: "ต่ออายุสมาชิกแล้ว", body: `สมาชิกถึงวันที่ ${thaiDate(expires_at)}`, link: "/account/membership", image_url: null });
   return expires_at;
 }
 

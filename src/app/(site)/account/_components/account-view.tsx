@@ -43,50 +43,35 @@ function Card({ title, description, children, className }: { title: string; desc
   );
 }
 
-export function AccountView({
-  viewer,
-  theme,
-  emailUpdates,
-  daysLeft,
-  firstPaidAt,
-  payments,
-}: {
-  viewer: Viewer;
-  theme: ThemePref;
-  emailUpdates: boolean;
-  daysLeft: number | null;
-  firstPaidAt: string | null;
-  payments: PaymentRow[];
-}) {
+/** Email (read-only). */
+export function EmailCard({ email }: { email: string }) {
   return (
-    <div className="mt-6 space-y-4 pb-8">
-      <Link
-        href="/library?tab=purchases"
-        className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 transition-colors hover:bg-hover sm:p-5"
-      >
-        <ShoppingBag className="size-5 shrink-0" strokeWidth={1.75} aria-hidden />
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold">สินค้าที่ซื้อ</span>
-          <span className="t-meta block">E-book คอร์ส และไฟล์ที่ซื้อไว้ ดาวน์โหลดซ้ำได้ตลอด</span>
-        </span>
-        <ChevronRight className="size-5 shrink-0 text-text-2" aria-hidden />
-      </Link>
-      <ProfileCard viewer={viewer} />
-      <Card title="อีเมล" description="ใช้สำหรับเข้าสู่ระบบและรับลิงก์ยืนยันต่างๆ">
-        <input type="email" value={viewer.email} readOnly aria-label="อีเมล" className={cn(inputClass, "cursor-default text-text-2")} />
-      </Card>
-      <PasswordCard />
-      <MembershipCard viewer={viewer} daysLeft={daysLeft} firstPaidAt={firstPaidAt} lastPayment={payments[0] ?? null} />
-      <PaymentsCard payments={payments} />
-      <PreferencesCard initialTheme={theme} initialAutoplay={viewer.autoplay} initialEmailUpdates={emailUpdates} />
-      <LogoutCard />
-    </div>
+    <Card title="อีเมล" description="ใช้สำหรับเข้าสู่ระบบและรับลิงก์ยืนยันต่างๆ">
+      <input type="email" value={email} readOnly aria-label="อีเมล" className={cn(inputClass, "cursor-default text-text-2")} />
+    </Card>
+  );
+}
+
+/** Shortcut to purchased products. */
+export function PurchasesLink() {
+  return (
+    <Link
+      href="/library/purchases"
+      className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 transition-colors hover:bg-hover sm:p-5"
+    >
+      <ShoppingBag className="size-5 shrink-0" strokeWidth={1.75} aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold">สินค้าที่ซื้อ</span>
+        <span className="t-meta block">E-book คอร์ส และไฟล์ที่ซื้อไว้ ดาวน์โหลดซ้ำได้ตลอด</span>
+      </span>
+      <ChevronRight className="size-5 shrink-0 text-text-2" aria-hidden />
+    </Link>
   );
 }
 
 // ───────── Profile ─────────
 
-function ProfileCard({ viewer }: { viewer: Viewer }) {
+export function ProfileCard({ viewer }: { viewer: Viewer }) {
   const router = useRouter();
   const [name, setName] = React.useState(viewer.display_name);
   const [avatar, setAvatar] = React.useState<string | null>(viewer.avatar_url);
@@ -231,7 +216,7 @@ function ProfileCard({ viewer }: { viewer: Viewer }) {
 
 // ───────── Password ─────────
 
-function PasswordCard() {
+export function PasswordCard() {
   const [state, action, pending] = React.useActionState(changePasswordAction, undefined);
   const [localError, setLocalError] = React.useState<string | null>(null);
   const formRef = React.useRef<HTMLFormElement>(null);
@@ -299,7 +284,7 @@ function PasswordCard() {
 
 // ───────── Membership ─────────
 
-function MembershipCard({
+export function MembershipCard({
   viewer,
   daysLeft,
   firstPaidAt,
@@ -310,7 +295,7 @@ function MembershipCard({
   firstPaidAt: string | null;
   lastPayment: PaymentRow | null;
 }) {
-  const renew = "/membership?from=%2Faccount";
+  const renew = "/membership?from=%2Faccount%2Fmembership";
   let body: React.ReactNode;
   if (viewer.is_admin) {
     body = <p className="text-[15px]">บัญชีผู้ดูแลช่อง เข้าถึงคอนเทนต์ได้ทั้งหมด</p>;
@@ -356,7 +341,7 @@ function MembershipCard({
 
 // ───────── Payments ─────────
 
-function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
+export function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
   const money = (p: PaymentRow) => `${formatNumber(p.amount)} ${p.currency === "THB" ? "บาท" : p.currency}`;
   return (
     <Card title="ประวัติการชำระเงิน">
@@ -420,7 +405,7 @@ const THEMES = [
   { value: "system", label: "ตามระบบ", Icon: Monitor },
 ] as const;
 
-function PreferencesCard({
+export function PreferencesCard({
   initialTheme,
   initialAutoplay,
   initialEmailUpdates,
@@ -508,7 +493,7 @@ function PreferencesCard({
 
 // ───────── Logout ─────────
 
-function LogoutCard() {
+export function LogoutCard() {
   const router = useRouter();
   const [pending, start] = React.useTransition();
   return (

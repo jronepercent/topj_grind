@@ -176,7 +176,7 @@ export function SuccessPoller({
               <Link href={dest}>เริ่มดูเลย</Link>
             </Button>
             <Button asChild variant="ghost" size="lg">
-              <Link href="/account">ดูบัญชีของฉัน</Link>
+              <Link href="/account/membership">ดูบัญชีของฉัน</Link>
             </Button>
           </div>
         </>

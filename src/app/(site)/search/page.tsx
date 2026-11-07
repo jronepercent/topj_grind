@@ -9,7 +9,7 @@ import { ContentGrid } from "@/components/content/feed";
 import { EmptyState, SectionHeader } from "@/components/ui/misc";
 import { formatNumber } from "@/lib/format";
 import type { ContentType } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { pillClass } from "@/components/ui/pill-class";
 
 type SearchType = Exclude<ContentType, "short"> | "playlist" | "article";
 type SP = Promise<{ q?: string | string[]; type?: string | string[] }>;
@@ -67,10 +67,7 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
                 href={href(q, chip.value)}
                 scroll={false}
                 aria-current={active ? "page" : undefined}
-                className={cn(
-                  "shrink-0 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition-colors",
-                  active ? "bg-text text-bg" : "bg-hover text-text hover:bg-[var(--border-strong)]",
-                )}
+                className={pillClass(active)}
               >
                 {chip.label}
               </Link>

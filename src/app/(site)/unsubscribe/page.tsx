@@ -22,7 +22,7 @@ export default async function UnsubscribePage({ searchParams }: Props) {
     body = "เราจะไม่ส่งอีเมลแจ้งคลิปหรือโพสต์ใหม่ให้คุณอีก (อีเมลเกี่ยวกับบัญชี เช่น ลืมรหัสผ่าน ยังส่งตามปกติ) เปลี่ยนใจเมื่อไรก็เปิดกลับได้ที่หน้าบัญชีของฉัน";
     action = (
       <Button asChild variant="outline">
-        <Link href="/account">ไปหน้าบัญชีของฉัน</Link>
+        <Link href="/account/preferences">ไปหน้าบัญชีของฉัน</Link>
       </Button>
     );
   } else if (error || !verifyUnsubscribeToken(u, t)) {
@@ -30,7 +30,7 @@ export default async function UnsubscribePage({ searchParams }: Props) {
     body = "ลิงก์ยกเลิกนี้ใช้ไม่ได้ หรือเกิดข้อผิดพลาด ถ้าคุณเข้าสู่ระบบอยู่ ปิดการรับอีเมลได้เองที่หน้าบัญชีของฉัน";
     action = (
       <Button asChild variant="outline">
-        <Link href="/account">ไปหน้าบัญชีของฉัน</Link>
+        <Link href="/account/preferences">ไปหน้าบัญชีของฉัน</Link>
       </Button>
     );
   } else {

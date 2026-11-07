@@ -157,7 +157,7 @@ export function ProductSuccessPoller({
               </Button>
             ) : null}
             <Button asChild variant={isCourse || product.has_file ? "secondary" : "primary"} size="lg">
-              <Link href="/library?tab=purchases">ดูในคลัง → ที่ซื้อแล้ว</Link>
+              <Link href="/library/purchases">ดูในคลัง → ที่ซื้อแล้ว</Link>
             </Button>
             <Button asChild variant="ghost" size="lg">
               <Link href={dest ?? "/shop"}>{dest ? "กลับไปที่เดิม" : "เลือกซื้อสินค้าอื่น"}</Link>

@@ -84,6 +84,6 @@ export async function grantProductAction(productId: string, email: string) {
 export async function refundPurchaseAction(purchaseId: string) {
   return run(async () => {
     await refundPurchase(await requireAdmin(), purchaseId);
-    revalidatePath("/library");
+    revalidatePath("/library", "layout");
   });
 }

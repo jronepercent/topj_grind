@@ -5,7 +5,7 @@ import { CardSkeleton, type ProgressMap } from "@/components/cards/cards";
 import { loadFeedAction } from "@/app/actions";
 import type { FeedQuery } from "@/lib/server/queries";
 import type { Category, Content } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { pillClass } from "@/components/ui/pill-class";
 
 type Chip = { key: string; label: string; query: Omit<FeedQuery, "offset" | "limit"> };
 
@@ -70,10 +70,7 @@ export function HomeFeed({
               role="tab"
               aria-selected={active === c.key}
               onClick={() => select(c.key)}
-              className={cn(
-                "h-8 shrink-0 rounded-[8px] px-3 text-[14px] font-medium transition-colors duration-150",
-                active === c.key ? "bg-text text-bg" : "bg-hover text-text hover:bg-[var(--border-strong)]",
-              )}
+              className={pillClass(active === c.key)}
             >
               {c.label}
             </button>
