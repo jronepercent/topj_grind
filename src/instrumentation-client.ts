@@ -1,14 +1,22 @@
 import { analyticsEnabled, loadAnalytics } from "@/lib/analytics";
 
-// Runs once in the browser before hydration (Next 15.3+). PostHog is downloaded only after the page
-// has loaded and the browser is idle, so it never competes with the hero image or hydration on phones.
-// Nothing is sent unless NEXT_PUBLIC_POSTHOG_KEY is set.
+// Runs once in the browser before hydration (Next 15.3+). PostHog (~118 kB gz plus its recorder) is downloaded
+// only on the visitor's first tap/scroll/key, or 8 s after the page has loaded, whichever comes first, so it never
+// competes with the first screen on phones. Trade-off: someone who leaves within 8 s without touching anything is
+// not counted. Nothing is sent outside topjgrind.com (see src/lib/analytics.ts).
 if (analyticsEnabled()) {
+  const EVENTS = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
+  let started = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const start = () => {
-    const idle = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
-    if (idle) idle(() => void loadAnalytics(), { timeout: 4000 });
-    else setTimeout(() => void loadAnalytics(), 1500);
+    if (started) return;
+    started = true;
+    clearTimeout(timer);
+    for (const e of EVENTS) window.removeEventListener(e, start);
+    void loadAnalytics();
   };
-  if (document.readyState === "complete") start();
-  else window.addEventListener("load", start, { once: true });
+  for (const e of EVENTS) window.addEventListener(e, start, { once: true, passive: true });
+  const arm = () => (timer = setTimeout(start, 8000));
+  if (document.readyState === "complete") arm();
+  else window.addEventListener("load", arm, { once: true });
 }

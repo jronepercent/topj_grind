@@ -58,6 +58,16 @@ export function loadAnalytics(): Promise<PostHog | null> {
         person_profiles: "identified_only",
         capture_pageleave: true,
         session_recording: { maskAllInputs: true },
+        // Each of these pulls in its own script and costs main-thread time on phones (Lighthouse TBT went 100 → 1,200 ms
+        // with them on). We use none of them; turn one back on only if it earns its weight.
+        disable_surveys: true,
+        disable_product_tours: true,
+        disable_conversations: true,
+        disable_web_experiments: true,
+        capture_dead_clicks: false,
+        capture_heatmaps: false,
+        capture_performance: false,
+        capture_exceptions: false,
         // Never record the admin area.
         before_send: (event) => {
           const url = event?.properties?.$current_url;

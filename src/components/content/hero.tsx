@@ -83,8 +83,11 @@ export function Hero({ items, device, className }: { items: HeroSlide[]; device?
   );
 }
 
-/** Hero images sit behind dark gradients, so a lower quality saves bytes without being visible. */
-const HERO_QUALITY = 60;
+/**
+ * Same as the loader default. 60 saved only ~3 kB on a phone hero, and Chrome skips "low-entropy" (too few bytes per pixel)
+ * images as LCP candidates, so a lighter dark hero can make LCP worse, not better.
+ */
+const HERO_QUALITY = 75;
 const PHONE_MQ = "(max-width: 639px)";
 const WIDE_MQ = "(min-width: 640px)";
 
