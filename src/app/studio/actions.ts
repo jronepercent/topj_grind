@@ -705,7 +705,7 @@ export async function extendMemberAction(userId: string, opts: { days?: number; 
     if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
     if (opts.until && Number.isNaN(new Date(opts.until).getTime())) throw new HttpError(400, "วันที่ไม่ถูกต้อง");
     const exp = await manualExtend(a, userId, opts, note);
-    revalidatePath("/studio/members");
+    revalidatePath("/studio/members", "layout");
     revalidatePath(`/studio/members/${userId}`);
     return exp;
   });
@@ -715,7 +715,7 @@ export async function revokeMemberAction(userId: string, note: string) {
   return admin(async (a) => {
     if (!isUuid(userId)) throw new HttpError(404, "ไม่พบผู้ใช้");
     await revokeMembership(a, userId, note);
-    revalidatePath("/studio/members");
+    revalidatePath("/studio/members", "layout");
     revalidatePath(`/studio/members/${userId}`);
   });
 }
@@ -738,7 +738,7 @@ export async function markFollowupAction(userId: string, kind: string) {
     if (!isFollowupKind(kind)) throw new HttpError(400, "ประเภทไม่ถูกต้อง");
     must(await adminDb().from("member_followups").insert({ user_id: userId, kind, admin_id: a.id }), "mark followup");
     await audit(a.id, "member.followup", "user", userId, kind);
-    revalidatePath("/studio/members");
+    revalidatePath("/studio/members", "layout");
     revalidatePath(`/studio/members/${userId}`);
   });
 }
@@ -759,7 +759,7 @@ export async function resolvePaymentErrorAction(id: string) {
   return admin(async () => {
     if (!isUuid(id)) throw new HttpError(404, "ไม่พบรายการ");
     must(await adminDb().from("payment_errors").update({ resolved: true }).eq("id", id), "resolve payment error");
-    revalidatePath("/studio/members");
+    revalidatePath("/studio/members", "layout");
   });
 }
 

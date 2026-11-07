@@ -18,26 +18,6 @@ import { uploadImageFile } from "./editor-parts";
 type Social = SiteSettings["socials"][number] & { k: string };
 const rid = () => Math.random().toString(36).slice(2);
 
-export function SettingsForm({
-  settings,
-  categories,
-  bannedWords,
-}: {
-  settings: SiteSettings;
-  categories: { id: string; name: string }[];
-  bannedWords: string[];
-}) {
-  return (
-    <div className="space-y-6">
-      <ChannelCard settings={settings} />
-      <CategoriesCard initial={categories} />
-      <BannedWordsCard initial={bannedWords} />
-      <PaywallCard settings={settings} />
-      <SchedulerCard />
-    </div>
-  );
-}
-
 function SaveRow({ busy, onSave, dirty }: { busy: boolean; onSave: () => void; dirty: boolean }) {
   return (
     <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
@@ -107,7 +87,7 @@ function ImageField({
   );
 }
 
-function ChannelCard({ settings }: { settings: SiteSettings }) {
+export function ChannelCard({ settings }: { settings: SiteSettings }) {
   const router = useRouter();
   const init = React.useMemo(
     () => ({
@@ -210,7 +190,7 @@ function ChannelCard({ settings }: { settings: SiteSettings }) {
   );
 }
 
-function CategoriesCard({ initial }: { initial: { id: string; name: string }[] }) {
+export function CategoriesCard({ initial }: { initial: { id: string; name: string }[] }) {
   const router = useRouter();
   const init = React.useMemo(() => initial.map((c) => ({ ...c, k: c.id })), [initial]);
   const [cats, setCats] = React.useState<{ id?: string; name: string; k: string }[]>(init);
@@ -261,7 +241,7 @@ function CategoriesCard({ initial }: { initial: { id: string; name: string }[] }
   );
 }
 
-function BannedWordsCard({ initial }: { initial: string[] }) {
+export function BannedWordsCard({ initial }: { initial: string[] }) {
   const [text, setText] = React.useState(initial.join("\n"));
   const [base, setBase] = React.useState(initial.join("\n"));
   const [busy, setBusy] = React.useState(false);
@@ -292,7 +272,7 @@ function BannedWordsCard({ initial }: { initial: string[] }) {
   );
 }
 
-function PaywallCard({ settings }: { settings: SiteSettings }) {
+export function PaywallCard({ settings }: { settings: SiteSettings }) {
   const router = useRouter();
   const init = React.useMemo(
     () => ({
@@ -359,7 +339,7 @@ function PaywallCard({ settings }: { settings: SiteSettings }) {
   );
 }
 
-function SchedulerCard() {
+export function SchedulerCard() {
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<{ published: string[]; reminded: number; at: string } | null>(null);
   return (

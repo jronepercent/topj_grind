@@ -8,22 +8,19 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { Dropdown, DropdownContent, DropdownItem, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "./confirm";
-import { PurchasesList } from "./purchases-list";
 import { Card, Dot } from "./ui";
 import { deleteProductAction, setProductFeaturedAction } from "@/app/studio/shop/actions";
 import { formatNumber } from "@/lib/format";
-import { PRODUCT_TYPE_LABEL, discountPercent, formatBaht, type ProductAdminRow, type StudioPurchaseRow } from "@/lib/shop";
+import { PRODUCT_TYPE_LABEL, discountPercent, formatBaht, type ProductAdminRow } from "@/lib/shop";
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "published" | "draft";
 
 export function ShopManager({
   rows,
-  purchases,
   hasFallbackPaymentUrl,
 }: {
   rows: ProductAdminRow[];
-  purchases: StudioPurchaseRow[];
   /** env PAYMENT_URL is set, so a product without its own payment link can still be bought. */
   hasFallbackPaymentUrl: boolean;
 }) {
@@ -35,30 +32,32 @@ export function ShopManager({
   const sold = rows.reduce((n, r) => n + r.sales_count, 0);
 
   return (
-    <div className="space-y-10">
+    <div>
       <section aria-label="สินค้า">
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-border no-scrollbar" role="tablist" aria-label="สถานะสินค้า">
-          {(
-            [
-              ["all", "ทั้งหมด"],
-              ["published", "เผยแพร่แล้ว"],
-              ["draft", "ฉบับร่าง"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={filter === k}
-              onClick={() => setFilter(k)}
-              className={cn(
-                "relative shrink-0 px-4 py-3 text-[14px] font-medium transition-colors after:absolute after:inset-x-3 after:bottom-[-1px] after:h-[2px] after:rounded-full",
-                filter === k ? "text-text after:bg-text" : "text-text-2 after:bg-transparent hover:text-text",
-              )}
-            >
-              {label} <span className="tnum ml-1 text-text-2">{formatNumber(counts[k])}</span>
-            </button>
-          ))}
-          <span className="t-meta tnum ml-auto self-center whitespace-nowrap pl-4">ขายแล้ว {formatNumber(sold)} ชิ้น</span>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto" role="tablist" aria-label="สถานะสินค้า">
+            {(
+              [
+                ["all", "ทั้งหมด"],
+                ["published", "เผยแพร่แล้ว"],
+                ["draft", "ฉบับร่าง"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={filter === k}
+                onClick={() => setFilter(k)}
+                className={cn(
+                  "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-medium transition-colors",
+                  filter === k ? "border-text bg-text text-bg" : "border-border bg-surface hover:bg-hover",
+                )}
+              >
+                {label} <span className="tnum opacity-70">{formatNumber(counts[k])}</span>
+              </button>
+            ))}
+          </div>
+          <span className="t-meta tnum shrink-0 whitespace-nowrap">ขายแล้ว {formatNumber(sold)} ชิ้น</span>
         </div>
 
         {shown.length === 0 ? (
@@ -170,13 +169,6 @@ export function ShopManager({
           </Card>
         )}
         <p className="t-meta mt-3">สินค้าจริง (ต้องจัดส่ง) — เร็วๆ นี้ ตอนนี้ขายได้เฉพาะสินค้าดิจิทัล</p>
-      </section>
-
-      <section aria-labelledby="recent-h">
-        <h2 id="recent-h" className="t-h2 mb-3">
-          รายการสั่งซื้อล่าสุด
-        </h2>
-        <PurchasesList rows={purchases} />
       </section>
 
       <ConfirmDialog

@@ -85,7 +85,7 @@ export function MemberFollowups({ groups, available }: { groups: FollowupGroup[]
                 </ul>
                 {g.items.length > LIMIT &&
                   (g.kind === "hot" ? (
-                    <Link href="/studio/members?seg=hot" className="t-meta mt-2 inline-block hover:text-text">
+                    <Link href="/studio/members/list?seg=hot" className="t-meta mt-2 inline-block hover:text-text">
                       ดูทั้งหมด {formatNumber(g.items.length)} คน
                     </Link>
                   ) : (

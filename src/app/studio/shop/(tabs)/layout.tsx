@@ -2,14 +2,14 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/studio/ui";
-import { ShopManager } from "@/components/studio/shop-manager";
-import { hasGeneralPaymentUrl } from "@/lib/server/payments";
-import { studioProducts, studioPurchases } from "@/lib/server/shop";
+import { StudioTabs } from "@/components/studio/studio-tabs";
 
-export const metadata = { title: "ร้านค้า" };
+const TABS = [
+  { href: "/studio/shop", label: "สินค้า" },
+  { href: "/studio/shop/orders", label: "คำสั่งซื้อ" },
+];
 
-export default async function StudioShopPage() {
-  const [rows, purchases] = await Promise.all([studioProducts(), studioPurchases(30)]);
+export default function StudioShopLayout({ children }: { children: React.ReactNode }) {
   return (
     <div>
       <PageHeader
@@ -23,7 +23,8 @@ export default async function StudioShopPage() {
           </Button>
         }
       />
-      <ShopManager rows={rows} purchases={purchases} hasFallbackPaymentUrl={hasGeneralPaymentUrl()} />
+      <StudioTabs tabs={TABS} label="หมวดร้านค้า" />
+      {children}
     </div>
   );
 }

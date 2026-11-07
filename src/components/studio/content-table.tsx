@@ -28,12 +28,12 @@ function matchesStatus(r: StudioContentRow, s: StatusFilter) {
   return r.status === s;
 }
 
-export function ContentTable({ rows: initial, initialTab }: { rows: StudioContentRow[]; initialTab: "all" | "trash" }) {
+export function ContentTable({ rows: initial, view }: { rows: StudioContentRow[]; view: "all" | "trash" }) {
   const router = useRouter();
   const [rows, setRows] = React.useState(initial);
   React.useEffect(() => setRows(initial), [initial]);
 
-  const [tab, setTab] = React.useState<"all" | "trash">(initialTab);
+  const tab = view;
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState<ContentType | "all">("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
@@ -56,10 +56,6 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
   );
   const filtersOn = !!term || type !== "all" || status !== "all" || vis !== "all";
 
-  const switchTab = (t: "all" | "trash") => {
-    setTab(t);
-    setSelected(new Set());
-  };
   const toggle = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -132,31 +128,6 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="mb-4 flex gap-1 border-b border-border" role="tablist" aria-label="มุมมอง">
-        {(
-          [
-            ["all", "คอนเทนต์", live.length],
-            ["trash", "ถังขยะ", trash.length],
-          ] as const
-        ).map(([k, label, n]) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => switchTab(k)}
-            className={cn(
-              "relative px-4 py-3 text-[14px] font-medium transition-colors",
-              tab === k ? "text-text" : "text-text-2 hover:text-text",
-              "after:absolute after:inset-x-3 after:bottom-[-1px] after:h-[2px] after:rounded-full",
-              tab === k ? "after:bg-text" : "after:bg-transparent",
-            )}
-          >
-            {label} <span className="tnum ml-1 text-text-2">{formatNumber(n)}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1 sm:max-w-sm">

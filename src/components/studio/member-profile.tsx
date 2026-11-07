@@ -44,7 +44,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="t-meta px-5 pb-5 pt-3">{children}</p>;
 }
 
-export function MemberProfile({ d }: { d: MemberDetail }) {
+export function MemberHeader({ d }: { d: MemberDetail }) {
   const router = useRouter();
   const [dialog, setDialog] = React.useState<null | "extend" | "revoke" | "ban">(null);
   const active = d.status === "active" || d.status === "expiring";
@@ -62,7 +62,7 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/studio/members" className="t-meta inline-flex items-center gap-1 hover:text-text">
+      <Link href="/studio/members/list" className="t-meta inline-flex items-center gap-1 hover:text-text">
         ← สมาชิกทั้งหมด
       </Link>
 
@@ -118,6 +118,18 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
         </div>
       </Card>
 
+      {dialog === "extend" && <ExtendDialog m={dm} onClose={() => setDialog(null)} onDone={refresh} />}
+      {dialog === "revoke" && <RevokeDialog m={dm} onClose={() => setDialog(null)} onDone={refresh} />}
+      {dialog === "ban" && <BanDialog d={d} onClose={() => setDialog(null)} onDone={refresh} />}
+    </div>
+  );
+}
+
+export function ProfileOverview({ d }: { d: MemberDetail }) {
+  const router = useRouter();
+  const refresh = () => router.refresh();
+  return (
+    <div className="space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="จ่ายรวม" value={`฿${formatNumber(d.lifetime_thb)}`} icon={<Wallet />} tone="member" />
@@ -133,6 +145,14 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
         </div>
       </Card>
 
+      <Notes d={d} onChange={refresh} />
+    </div>
+  );
+}
+
+export function ProfileBilling({ d }: { d: MemberDetail }) {
+  return (
+    <div className="space-y-6">
       {/* Money */}
       <Card>
         <CardHeader title="การเงิน" description="การชำระค่าสมาชิก การซื้อสินค้า และไฟล์ตัวอย่างที่ดาวน์โหลด" />
@@ -196,7 +216,13 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
 
+export function ProfileWatch({ d }: { d: MemberDetail }) {
+  return (
+    <div className="space-y-6">
       {/* Watched */}
       <Card>
         <CardHeader title="คลิปที่ดู" description={`กดไลก์ ${formatNumber(d.likes)} · บันทึกไว้ ${formatNumber(d.saved)}`} />
@@ -228,7 +254,13 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
 
+export function ProfileCommunity({ d }: { d: MemberDetail }) {
+  return (
+    <div className="space-y-6">
       {/* Community */}
       <Card>
         <CardHeader title="ชุมชนและคอมเมนต์" description={`คอมเมนต์ในโพสต์ชุมชน ${formatNumber(d.post_comment_count)} รายการ`} />
@@ -266,7 +298,13 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
 
+export function ProfileLog({ d }: { d: MemberDetail }) {
+  return (
+    <div className="space-y-6">
       {/* Welcome emails */}
       <Card>
         <CardHeader title="อีเมลต้อนรับ" description="ระบบส่งอัตโนมัติ 4 ครั้งหลังสมัคร" />
@@ -291,8 +329,6 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
         </ul>
       </Card>
 
-      <Notes d={d} onChange={refresh} />
-
       <Card>
         <CardHeader title="ประวัติแอดมินกับคนนี้" description="20 รายการล่าสุด" />
         {d.audit.length === 0 ? (
@@ -314,10 +350,6 @@ export function MemberProfile({ d }: { d: MemberDetail }) {
           </ul>
         )}
       </Card>
-
-      {dialog === "extend" && <ExtendDialog m={dm} onClose={() => setDialog(null)} onDone={refresh} />}
-      {dialog === "revoke" && <RevokeDialog m={dm} onClose={() => setDialog(null)} onDone={refresh} />}
-      {dialog === "ban" && <BanDialog d={d} onClose={() => setDialog(null)} onDone={refresh} />}
     </div>
   );
 }

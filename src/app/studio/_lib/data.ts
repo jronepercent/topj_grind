@@ -1,9 +1,11 @@
 import "server-only";
+import { cache } from "react";
 import { adminDb } from "@/lib/supabase/clients";
 import { isActiveUntil } from "@/lib/server/auth";
 import { isLive, isUuid } from "@/lib/server/queries";
 import { timeAgo } from "@/lib/format";
-import type { CommentRow, ContentRow, ContentType, PaymentMethod } from "@/lib/types";
+import type { AuditLog, CommentRow, ContentRow, ContentType, PaymentError, PaymentMethod } from "@/lib/types";
+import type { AuditEntry, PaymentErrorEntry } from "@/components/studio/members-manager";
 import type { PlanCode } from "@/lib/plans";
 import type {
   AuthProvider,
@@ -802,4 +804,82 @@ export function memberFunnel(rows: MemberRow[], now = Date.now()): FunnelWindow[
       onboarding: { answered, stages, since: { total: onboarded.length, answered: onboarded.filter((r) => r.onboarding_stage).length } },
     };
   });
+}
+
+// ───────── Per-request shared fetches (layout + page of the members area share one query) ─────────
+export const getMemberRows = cache(() => memberRows(Date.now()));
+export const getMemberSummary = cache(async () => memberSummary(await getMemberRows(), Date.now()));
+export const getFollowups = cache(async () => memberFollowups(await getMemberRows(), Date.now()));
+export const getFunnel = cache(async () => memberFunnel(await getMemberRows(), Date.now()));
+export const getMemberDetail = cache((id: string) => (isUuid(id) ? memberDetail(id) : Promise.resolve(null)));
+
+/** Unresolved payment errors, payload trimmed for display. */
+export const getPaymentErrors = cache(async (): Promise<PaymentErrorEntry[]> => {
+  const rows = check<PaymentError[]>(
+    await adminDb().from("payment_errors").select("*").eq("resolved", false).order("created_at", { ascending: false }),
+    "payment errors",
+  );
+  return rows.map((e) => {
+    let payload = "";
+    try {
+      payload = JSON.stringify(e.payload, null, 2) ?? "";
+    } catch {
+      payload = String(e.payload);
+    }
+    return { id: e.id, reason: e.reason ?? "", created_at: e.created_at, payload: payload.length > 1200 ? payload.slice(0, 1200) + "\n…" : payload };
+  });
+});
+
+/** Latest admin actions with names resolved for users / content / playlists. */
+export async function auditEntries(limit = 50): Promise<AuditEntry[]> {
+  const db = adminDb();
+  const log = check<AuditLog[]>(await db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(limit), "audit log");
+  const userIds = [...log.map((a) => a.admin_id), ...log.filter((a) => a.target_type === "user").map((a) => a.target_id)].filter(Boolean);
+  const contentIds = log.filter((a) => a.target_type === "content").map((a) => a.target_id);
+  const playlistIds = log.filter((a) => a.target_type === "playlist").map((a) => a.target_id);
+  const [people, titles, playlists] = await Promise.all([
+    fetchIn<{ id: string; display_name: string }>(userIds.filter(isUuid), (ids) => db.from("profiles").select("id, display_name").in("id", ids), "names"),
+    fetchIn<{ id: string; title: string }>(contentIds.filter(isUuid), (ids) => db.from("content").select("id, title").in("id", ids), "titles"),
+    fetchIn<{ id: string; title: string }>(playlistIds.filter(isUuid), (ids) => db.from("playlists").select("id, title").in("id", ids), "playlists"),
+  ]);
+  const names = new Map(people.map((p) => [p.id, p.display_name]));
+  const titleOf = new Map(titles.map((c) => [c.id, c.title]));
+  const playlistOf = new Map(playlists.map((p) => [p.id, p.title]));
+  return log.map((a) => ({
+    id: a.id,
+    admin: names.get(a.admin_id) ?? "ผู้ดูแล",
+    action: a.action,
+    target:
+      a.target_type === "user"
+        ? (names.get(a.target_id) ?? a.target_id)
+        : a.target_type === "content"
+          ? (titleOf.get(a.target_id) ?? a.target_id)
+          : a.target_type === "playlist"
+            ? (playlistOf.get(a.target_id) ?? a.target_id)
+            : "",
+    note: a.note ?? "",
+    created_at: a.created_at,
+  }));
+}
+
+export interface PaymentLine {
+  id: string;
+  user_id: string;
+  name: string;
+  paid_at: string;
+  plan: PlanCode | null;
+  method: PaymentMethod;
+  amount: number;
+}
+
+/** Newest payments across all members. */
+export async function recentPayments(limit = 50): Promise<PaymentLine[]> {
+  const db = adminDb();
+  const rows = check<{ id: string; user_id: string; paid_at: string; plan: PlanCode | null; method: PaymentMethod; amount: number | string }[]>(
+    await db.from("payments").select("id, user_id, paid_at, plan, method, amount").order("paid_at", { ascending: false }).limit(limit),
+    "payments",
+  );
+  const people = await fetchIn<{ id: string; display_name: string }>(rows.map((r) => r.user_id), (ids) => db.from("profiles").select("id, display_name").in("id", ids), "names");
+  const name = new Map(people.map((p) => [p.id, p.display_name]));
+  return rows.map((r) => ({ id: r.id, user_id: r.user_id, name: name.get(r.user_id) || "ผู้ใช้", paid_at: r.paid_at, plan: r.plan, method: r.method, amount: Number(r.amount || 0) }));
 }

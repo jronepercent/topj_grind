@@ -98,8 +98,8 @@ export function CommentsInbox({ comments: initial, initialTab }: { comments: Stu
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-border">
-        <div className="no-scrollbar flex gap-1 overflow-x-auto" role="tablist" aria-label="กรองความคิดเห็น">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto" role="tablist" aria-label="กรองความคิดเห็น">
           {tabs.map(([k, label]) => (
             <button
               key={k}
@@ -107,17 +107,15 @@ export function CommentsInbox({ comments: initial, initialTab }: { comments: Stu
               aria-selected={tab === k}
               onClick={() => setTab(k)}
               className={cn(
-                "relative shrink-0 px-4 py-3 text-[14px] font-medium transition-colors",
-                tab === k ? "text-text" : "text-text-2 hover:text-text",
-                "after:absolute after:inset-x-3 after:bottom-[-1px] after:h-[2px] after:rounded-full",
-                tab === k ? "after:bg-text" : "after:bg-transparent",
+                "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-medium transition-colors",
+                tab === k ? "border-text bg-text text-bg" : "border-border bg-surface hover:bg-hover",
               )}
             >
-              {label} <span className="tnum ml-1 text-text-2">{formatNumber(counts[k])}</span>
+              {label} <span className="tnum opacity-70">{formatNumber(counts[k])}</span>
             </button>
           ))}
         </div>
-        <div className="relative mb-2 w-full sm:w-72">
+        <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-2" aria-hidden />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาความคิดเห็น" aria-label="ค้นหาความคิดเห็น" className={cn(inputClass, "h-10 rounded-full py-0 pl-10")} />
         </div>

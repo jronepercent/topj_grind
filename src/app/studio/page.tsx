@@ -62,7 +62,7 @@ export default async function StudioDashboard() {
               icon={<CircleAlert />}
               title={`การชำระเงินที่ต้องตรวจสอบ ${paymentErrors} รายการ`}
               body="ระบบรับแจ้งชำระเงินแต่จับคู่ผู้ใช้ไม่ได้ ตรวจสอบและต่ออายุให้เองได้ที่หน้าสมาชิก"
-              href="/studio/members#payment-errors"
+              href="/studio/members/payments"
               cta="ตรวจสอบ"
             />
           )}
@@ -71,7 +71,7 @@ export default async function StudioDashboard() {
 
       {todoCount !== null && todoCount > 0 && (
         <Link
-          href="/studio/members"
+          href="/studio/members/todo"
           className="mb-3 flex items-center justify-between gap-3 rounded-[16px] border border-border bg-surface px-4 py-3 text-[14px] hover:bg-hover"
         >
           <span>
@@ -90,7 +90,7 @@ export default async function StudioDashboard() {
           label="ใกล้หมดอายุ"
           value={expiring}
           icon={<Hourglass />}
-          hint={<Link href="/studio/members" className="hover:text-text">ภายใน 7 วัน · ดูรายชื่อ</Link>}
+          hint={<Link href="/studio/members/list?seg=expiring" className="hover:text-text">ภายใน 7 วัน · ดูรายชื่อ</Link>}
         />
       </div>
 

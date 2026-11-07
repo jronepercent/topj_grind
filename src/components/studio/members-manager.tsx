@@ -19,16 +19,12 @@ import {
   ONBOARDING_STAGE_LABEL,
   PLAN_LABEL,
   SEGMENT_LABEL,
-  type FollowupGroup,
-  type FunnelWindow,
   type MemberRow,
   type MemberSegment,
   type MemberStatus,
 } from "./types";
 import { Card, CardHeader, Dot, StatCard } from "./ui";
 import { isoToBkkInput } from "./editor-parts";
-import { MemberFollowups } from "./member-followups";
-import { MemberFunnel } from "./member-funnel";
 import { TimeAgo } from "@/components/ui/time-ago";
 
 export interface AuditEntry {
@@ -112,86 +108,20 @@ const STATUS_TONE: Record<MemberStatus, "success" | "member" | "danger" | "muted
   never: "muted",
 };
 
-type DialogMember = Pick<MemberRow, "id" | "display_name" | "expires_at">;
-
-type SortKey = "lifetime_thb" | "watch_sec" | "last_active" | "signed_up_at" | "expires_at";
-type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
-
-function sortValue(m: MemberRow, key: SortKey): number | null {
-  if (key === "lifetime_thb" || key === "watch_sec") return m[key];
-  const v = m[key];
-  return v ? new Date(v).getTime() : null;
+export interface MemberSummary {
+  active: number;
+  within7: number;
+  expiringThisMonth: number;
+  revenue: number;
+  total: number;
+  free: number;
+  new7: number;
+  hot: number;
 }
 
-export function MembersManager({
-  rows,
-  summary,
-  audit,
-  paymentErrors,
-  initialSegment,
-  initialQuery,
-  followups,
-  funnel,
-}: {
-  rows: MemberRow[];
-  summary: { active: number; within7: number; expiringThisMonth: number; revenue: number; total: number; free: number; new7: number; hot: number };
-  audit: AuditEntry[];
-  paymentErrors: PaymentErrorEntry[];
-  initialSegment: MemberSegment;
-  initialQuery: string;
-  followups: { groups: FollowupGroup[]; available: boolean };
-  funnel: FunnelWindow[];
-}) {
-  const router = useRouter();
-  const [q, setQ] = React.useState(initialQuery);
-  const [seg, setSeg] = React.useState<MemberSegment>(initialSegment);
-  React.useEffect(() => setSeg(initialSegment), [initialSegment]);
-  const [sort, setSort] = React.useState<Sort>(null);
-  const [now] = React.useState(() => Date.now());
-  const [dialog, setDialog] = React.useState<null | { kind: "extend" | "revoke"; m: MemberRow }>(null);
-  const [errors, setErrors] = React.useState(paymentErrors);
-  React.useEffect(() => setErrors(paymentErrors), [paymentErrors]);
-
-  const term = q.trim().toLowerCase();
-  const counts = React.useMemo(() => {
-    const out = {} as Record<MemberSegment, number>;
-    for (const k of MEMBER_SEGMENTS) out[k] = rows.filter((r) => inSegment(r, k, now)).length;
-    return out;
-  }, [rows, now]);
-  const list = React.useMemo(() => {
-    const out = rows.filter(
-      (r) => inSegment(r, seg, now) && (!term || r.display_name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term)),
-    );
-    if (!sort) return out;
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return out.slice().sort((a, b) => {
-      const x = sortValue(a, sort.key);
-      const y = sortValue(b, sort.key);
-      if (x === null && y === null) return 0;
-      if (x === null) return 1; // empty values always last
-      if (y === null) return -1;
-      return (x - y) * dir;
-    });
-  }, [rows, seg, term, sort, now]);
-  const csvHref = `/api/studio/members?${new URLSearchParams({ ...(term ? { q: term } : {}), seg }).toString()}`;
-
-  const pick = (next: MemberSegment) => {
-    setSeg(next);
-    router.replace(next === "all" ? "/studio/members" : `/studio/members?seg=${next}`, { scroll: false });
-  };
-  const toggleSort = (key: SortKey) =>
-    setSort((cur) => (!cur || cur.key !== key ? { key, dir: "desc" } : cur.dir === "desc" ? { key, dir: "asc" } : null));
-  const th = (key: SortKey, label: string) => (
-    <th scope="col" className="px-3 py-3 font-medium" aria-sort={sort?.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button type="button" onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 hover:text-text">
-        {label}
-        {sort?.key === key ? sort.dir === "asc" ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden /> : null}
-      </button>
-    </th>
-  );
-
+/** Overview: both rows of stat cards. */
+export function MembersStats({ summary }: { summary: MemberSummary }) {
   return (
-    <div className="space-y-8">
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label="สมาชิกปัจจุบัน" value={summary.active} icon={<Users />} tone="member" />
@@ -206,15 +136,20 @@ export function MembersManager({
           <StatCard label="Lead ร้อน" value={summary.hot} icon={<Flame />} tone="danger" hint="ยังไม่จ่าย แต่ดูหนักใน 7 วัน" />
         </div>
       </div>
+  );
+}
 
-      <MemberFollowups groups={followups.groups} available={followups.available} />
-      <MemberFunnel windows={funnel} />
-
-      {errors.length > 0 && (
+/** Payments the system could not match to a user — resolved by hand. */
+export function PaymentErrorsCard({ paymentErrors }: { paymentErrors: PaymentErrorEntry[] }) {
+  const router = useRouter();
+  const [errors, setErrors] = React.useState(paymentErrors);
+  React.useEffect(() => setErrors(paymentErrors), [paymentErrors]);
+  if (errors.length === 0) return <EmptyState art="search" title="ไม่มีการชำระเงินที่ต้องตรวจสอบ" />;
+  return (
         <Card id="payment-errors" className="scroll-mt-28 border-danger/30">
           <CardHeader
             title={`การชำระเงินที่ต้องตรวจสอบ (${errors.length})`}
-            description="ระบบรับแจ้งชำระเงินแต่ประมวลผลไม่ได้ ตรวจสอบแล้วต่ออายุให้เองจากตารางด้านล่าง"
+            description="ระบบรับแจ้งชำระเงินแต่ประมวลผลไม่ได้ ตรวจสอบแล้วต่ออายุให้เองจากหน้ารายชื่อ"
           />
           <ul className="space-y-3 px-5 pb-5 pt-3">
             {errors.map((e) => (
@@ -249,8 +184,104 @@ export function MembersManager({
             ))}
           </ul>
         </Card>
-      )}
+      
+  );
+}
 
+/** Admin audit log. */
+export function AuditLogCard({ audit }: { audit: AuditEntry[] }) {
+  return (
+      <Card>
+        <CardHeader title="ประวัติการดำเนินการ" description={`${audit.length} รายการล่าสุดจากผู้ดูแล`} />
+        {audit.length === 0 ? (
+          <p className="t-meta px-5 pb-5 pt-2">ยังไม่มีประวัติ</p>
+        ) : (
+          <ul className="px-5 pb-4 pt-2">
+            {audit.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border py-2.5 text-[13px] last:border-0">
+                <span className="tnum w-28 shrink-0 text-text-2"><TimeAgo iso={a.created_at} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
+                  {a.target && <span className="text-text-2"> · {a.target}</span>}
+                  {a.note && <span className="mt-0.5 block text-text-2">หมายเหตุ: {auditNoteText(a.action, a.note)}</span>}
+                </span>
+                <span className="t-caption text-text-2">{a.admin}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+  );
+}
+
+type DialogMember = Pick<MemberRow, "id" | "display_name" | "expires_at">;
+
+type SortKey = "lifetime_thb" | "watch_sec" | "last_active" | "signed_up_at" | "expires_at";
+type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
+
+function sortValue(m: MemberRow, key: SortKey): number | null {
+  if (key === "lifetime_thb" || key === "watch_sec") return m[key];
+  const v = m[key];
+  return v ? new Date(v).getTime() : null;
+}
+
+export function MembersList({
+  rows,
+  initialSegment,
+  initialQuery,
+}: {
+  rows: MemberRow[];
+  initialSegment: MemberSegment;
+  initialQuery: string;
+}) {
+  const router = useRouter();
+  const [q, setQ] = React.useState(initialQuery);
+  const [seg, setSeg] = React.useState<MemberSegment>(initialSegment);
+  React.useEffect(() => setSeg(initialSegment), [initialSegment]);
+  const [sort, setSort] = React.useState<Sort>(null);
+  const [now] = React.useState(() => Date.now());
+  const [dialog, setDialog] = React.useState<null | { kind: "extend" | "revoke"; m: MemberRow }>(null);
+
+  const term = q.trim().toLowerCase();
+  const counts = React.useMemo(() => {
+    const out = {} as Record<MemberSegment, number>;
+    for (const k of MEMBER_SEGMENTS) out[k] = rows.filter((r) => inSegment(r, k, now)).length;
+    return out;
+  }, [rows, now]);
+  const list = React.useMemo(() => {
+    const out = rows.filter(
+      (r) => inSegment(r, seg, now) && (!term || r.display_name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term)),
+    );
+    if (!sort) return out;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return out.slice().sort((a, b) => {
+      const x = sortValue(a, sort.key);
+      const y = sortValue(b, sort.key);
+      if (x === null && y === null) return 0;
+      if (x === null) return 1; // empty values always last
+      if (y === null) return -1;
+      return (x - y) * dir;
+    });
+  }, [rows, seg, term, sort, now]);
+  const csvHref = `/api/studio/members?${new URLSearchParams({ ...(term ? { q: term } : {}), seg }).toString()}`;
+
+  const pick = (next: MemberSegment) => {
+    setSeg(next);
+    router.replace(next === "all" ? "/studio/members/list" : `/studio/members/list?seg=${next}`, { scroll: false });
+  };
+  const toggleSort = (key: SortKey) =>
+    setSort((cur) => (!cur || cur.key !== key ? { key, dir: "desc" } : cur.dir === "desc" ? { key, dir: "asc" } : null));
+  const th = (key: SortKey, label: string) => (
+    <th scope="col" className="px-3 py-3 font-medium" aria-sort={sort?.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 hover:text-text">
+        {label}
+        {sort?.key === key ? sort.dir === "asc" ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden /> : null}
+      </button>
+    </th>
+  );
+
+  return (
+    <div>
       <div>
         <div role="tablist" aria-label="กลุ่มสมาชิก" className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-1">
           {MEMBER_SEGMENTS.map((k) => (
@@ -398,27 +429,6 @@ export function MembersManager({
           </>
         )}
       </div>
-
-      <Card>
-        <CardHeader title="ประวัติการดำเนินการ" description="20 รายการล่าสุดจากผู้ดูแล" />
-        {audit.length === 0 ? (
-          <p className="t-meta px-5 pb-5 pt-2">ยังไม่มีประวัติ</p>
-        ) : (
-          <ul className="px-5 pb-4 pt-2">
-            {audit.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border py-2.5 text-[13px] last:border-0">
-                <span className="tnum w-28 shrink-0 text-text-2"><TimeAgo iso={a.created_at} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
-                  {a.target && <span className="text-text-2"> · {a.target}</span>}
-                  {a.note && <span className="mt-0.5 block text-text-2">หมายเหตุ: {auditNoteText(a.action, a.note)}</span>}
-                </span>
-                <span className="t-caption text-text-2">{a.admin}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
 
       {dialog?.kind === "extend" && <ExtendDialog m={dialog.m} onClose={() => setDialog(null)} onDone={() => router.refresh()} />}
       {dialog?.kind === "revoke" && <RevokeDialog m={dialog.m} onClose={() => setDialog(null)} onDone={() => router.refresh()} />}

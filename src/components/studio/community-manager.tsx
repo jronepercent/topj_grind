@@ -16,15 +16,9 @@ import type { StudioCommentRow, StudioPostRow } from "@/lib/server/community";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
 
-type Tab = "posts" | "comments";
-
-/** Studio → ชุมชน: JR's own "โพสต์รูป" composer, plus moderation of posts and comments. */
-export function CommunityManager({ posts, comments, viewer }: { posts: StudioPostRow[]; comments: StudioCommentRow[]; viewer: { display_name: string; avatar_url: string | null } }) {
+/** Studio → ชุมชน → โพสต์: JR's own "โพสต์รูป" composer, plus moderation of community posts. */
+export function CommunityPosts({ posts, viewer }: { posts: StudioPostRow[]; viewer: { display_name: string; avatar_url: string | null } }) {
   const router = useRouter();
-  const [tab, setTab] = React.useState<Tab>("posts");
-  const [delPost, setDelPost] = React.useState<StudioPostRow | null>(null);
-  const [delComment, setDelComment] = React.useState<StudioCommentRow | null>(null);
-  const [emailPost, setEmailPost] = React.useState<StudioPostRow | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const act = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
@@ -35,6 +29,8 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
     toast(msg);
     router.refresh();
   };
+  const [delPost, setDelPost] = React.useState<StudioPostRow | null>(null);
+  const [emailPost, setEmailPost] = React.useState<StudioPostRow | null>(null);
 
   return (
     <div className="space-y-8">
@@ -43,31 +39,8 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
         <PostComposer asViewer={viewer} onPosted={() => router.refresh()} placeholder="โพสต์ถึงสมาชิกในชุมชน แนบรูปได้สูงสุด 10 รูป…" className="max-w-[640px]" />
       </section>
 
-      <div>
-        <div className="mb-4 flex gap-1 border-b border-border" role="tablist" aria-label="หมวดดูแลชุมชน">
-          {(
-            [
-              ["posts", "โพสต์", posts.length],
-              ["comments", "ความคิดเห็น", comments.length],
-            ] as const
-          ).map(([k, label, n]) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={tab === k}
-              onClick={() => setTab(k)}
-              className={cn(
-                "relative px-4 py-3 text-[14px] font-medium transition-colors after:absolute after:inset-x-3 after:bottom-[-1px] after:h-[2px] after:rounded-full",
-                tab === k ? "text-text after:bg-text" : "text-text-2 after:bg-transparent hover:text-text",
-              )}
-            >
-              {label} <span className="tnum ml-1 text-text-2">{formatNumber(n)}</span>
-            </button>
-          ))}
-        </div>
-
-        {tab === "posts" ? (
-          posts.length === 0 ? (
+      <section aria-label="โพสต์ทั้งหมด">
+        {posts.length === 0 ? (
             <EmptyState art="comment" title="ยังไม่มีโพสต์" body="โพสต์ของสมาชิกและของคุณจะแสดงที่นี่" />
           ) : (
             <Card className="overflow-hidden">
@@ -153,8 +126,45 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
                 ))}
               </ul>
             </Card>
-          )
-        ) : comments.length === 0 ? (
+          )}
+      </section>
+
+      {emailPost && <SendEmailDialog type="post" id={emailPost.id} title={emailPost.body.slice(0, 80) || "(รูปอย่างเดียว)"} onClose={() => setEmailPost(null)} />}
+      <ConfirmDialog
+        open={!!delPost}
+        onOpenChange={(o) => !o && setDelPost(null)}
+        title="ลบโพสต์นี้?"
+        body="โพสต์จะหายจากชุมชนทันที ย้อนกลับไม่ได้"
+        confirmLabel="ลบโพสต์"
+        onConfirm={async () => {
+          if (!delPost) return;
+          const id = delPost.id;
+          setDelPost(null);
+          await act(`del-${id}`, () => deletePostAction(id), "ลบโพสต์แล้ว");
+        }}
+      />
+    </div>
+  );
+}
+
+/** Studio → ชุมชน → ความคิดเห็น: moderate comments on posts and articles. */
+export function CommunityComments({ comments }: { comments: StudioCommentRow[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  const act = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
+    setBusy(key);
+    const r = await fn();
+    setBusy(null);
+    if (!r.ok) return toast(r.error ?? "ทำรายการไม่ได้");
+    toast(msg);
+    router.refresh();
+  };
+  const [delComment, setDelComment] = React.useState<StudioCommentRow | null>(null);
+
+  return (
+    <div>
+      {comments.length === 0 ? (
           <EmptyState art="comment" title="ยังไม่มีความคิดเห็น" body="ความคิดเห็นในโพสต์และบทความจะแสดงที่นี่" />
         ) : (
           <Card className="overflow-hidden">
@@ -198,22 +208,7 @@ export function CommunityManager({ posts, comments, viewer }: { posts: StudioPos
             </ul>
           </Card>
         )}
-      </div>
 
-      {emailPost && <SendEmailDialog type="post" id={emailPost.id} title={emailPost.body.slice(0, 80) || "(รูปอย่างเดียว)"} onClose={() => setEmailPost(null)} />}
-      <ConfirmDialog
-        open={!!delPost}
-        onOpenChange={(o) => !o && setDelPost(null)}
-        title="ลบโพสต์นี้?"
-        body="โพสต์จะหายจากชุมชนทันที ย้อนกลับไม่ได้"
-        confirmLabel="ลบโพสต์"
-        onConfirm={async () => {
-          if (!delPost) return;
-          const id = delPost.id;
-          setDelPost(null);
-          await act(`del-${id}`, () => deletePostAction(id), "ลบโพสต์แล้ว");
-        }}
-      />
       <ConfirmDialog
         open={!!delComment}
         onOpenChange={(o) => !o && setDelComment(null)}

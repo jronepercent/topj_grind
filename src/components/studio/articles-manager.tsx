@@ -29,7 +29,7 @@ export function ArticlesManager({ rows }: { rows: StudioArticleRow[] }) {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-border" role="tablist" aria-label="สถานะบทความ">
+      <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto" role="tablist" aria-label="สถานะบทความ">
         {(
           [
             ["all", "ทั้งหมด"],
@@ -43,11 +43,11 @@ export function ArticlesManager({ rows }: { rows: StudioArticleRow[] }) {
             aria-selected={filter === k}
             onClick={() => setFilter(k)}
             className={cn(
-              "relative px-4 py-3 text-[14px] font-medium transition-colors after:absolute after:inset-x-3 after:bottom-[-1px] after:h-[2px] after:rounded-full",
-              filter === k ? "text-text after:bg-text" : "text-text-2 after:bg-transparent hover:text-text",
+              "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-medium transition-colors",
+              filter === k ? "border-text bg-text text-bg" : "border-border bg-surface hover:bg-hover",
             )}
           >
-            {label} <span className="tnum ml-1 text-text-2">{formatNumber(counts[k])}</span>
+            {label} <span className="tnum opacity-70">{formatNumber(counts[k])}</span>
           </button>
         ))}
       </div>
