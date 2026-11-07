@@ -2,6 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { AlertCircle, CreditCard, FlaskConical, Lock, Mail, QrCode } from "lucide-react";
 import { startCheckoutAction } from "@/app/(site)/membership/checkout/actions";
 import { PAY_FROM_KEY } from "@/app/(site)/membership/_components/pay-button";
@@ -83,6 +84,11 @@ export function CheckoutForm({
       if (from) sessionStorage.setItem(PAY_FROM_KEY, from);
       else sessionStorage.removeItem(PAY_FROM_KEY);
     } catch {}
+    posthog.capture("membership_checkout_started", {
+      plan_code: planCode,
+      payment_method: method,
+      amount_thb: plan.price,
+    });
     // Stay "busy" while the browser navigates, so a second tap can't start a second checkout.
     if (r.external) window.location.assign(r.url);
     else router.push(r.url);

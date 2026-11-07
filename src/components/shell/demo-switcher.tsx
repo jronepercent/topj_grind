@@ -5,6 +5,7 @@ import { FlaskConical } from "lucide-react";
 import { useViewer } from "@/components/providers";
 import { demoLoginAction } from "@/app/(auth)/auth-actions";
 import { Dropdown, DropdownContent, DropdownItem, DropdownLabel, DropdownTrigger } from "@/components/ui/dropdown";
+import posthog from "posthog-js";
 
 const ROLES = [
   ["guest", "Guest (ไม่ล็อกอิน)"],
@@ -45,6 +46,7 @@ export function DemoSwitcher() {
               key={role}
               onSelect={() =>
                 start(async () => {
+                  posthog.reset();
                   await demoLoginAction(role);
                   router.refresh();
                 })

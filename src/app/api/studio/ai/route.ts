@@ -1,4 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Anthropic as PostHogAnthropic } from "@posthog/ai/anthropic";
+import { PostHog } from "posthog-node";
+import { randomUUID } from "node:crypto";
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { after } from "next/server";
+import { flushPostHogLogs, posthogLogger } from "../../../../../instrumentation";
 import { HttpError, rateLimit, requireAdmin } from "@/lib/server/auth";
 import { AI_ERROR_MARKER } from "@/lib/community";
 import {
@@ -88,7 +94,43 @@ export async function POST(req: Request) {
     }
   } else return json({ error: "คำขอไม่ถูกต้อง" }, 400);
 
-  const client = new Anthropic(); // ANTHROPIC_API_KEY from the environment, server only
+  posthogLogger?.emit({
+    body: "ai_generation_requested",
+    severityNumber: SeverityNumber.INFO,
+    attributes: { endpoint: "/api/studio/ai", generation_mode: mode },
+  });
+  after(() => flushPostHogLogs());
+
+  const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+  const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+  if (!posthogToken && process.env.NODE_ENV !== "production") {
+    console.warn("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured");
+  }
+  if (!posthogHost && process.env.NODE_ENV !== "production") {
+    console.warn("NEXT_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_HOST is configured");
+  }
+
+  const posthog = posthogToken && posthogHost
+    ? new PostHog(posthogToken, {
+        host: posthogHost,
+        flushAt: 1,
+        flushInterval: 0,
+        requestTimeout: 2000,
+        fetchRetryCount: 0,
+        privacyMode: false,
+      })
+    : null;
+  const client = posthog
+    ? new PostHogAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, posthog })
+    : (new Anthropic() as unknown as PostHogAnthropic);
+  const aiContext = posthog
+    ? {
+        posthogDistinctId: adminId,
+        posthogTraceId: randomUUID(),
+        posthogProperties: { $ai_session_id: `ai_writer:${adminId}:${randomUUID()}` },
+      }
+    : {};
+  const shutdownPosthog = () => posthog?.shutdown().catch(() => {});
 
   // ── title + excerpt suggestion: one short JSON reply ──
   if (mode === "meta") {
@@ -100,13 +142,26 @@ export async function POST(req: Request) {
         thinking: { type: "adaptive" },
         output_config: { effort: "low", format: { type: "json_schema", schema: META_SCHEMA as unknown as Record<string, unknown> } },
         messages: [{ role: "user", content: userPrompt }],
+        ...aiContext,
       });
+      await shutdownPosthog();
       if (res.stop_reason === "refusal") return json({ error: "AI ปฏิเสธคำขอนี้" }, 422);
       const text = res.content.map((b) => (b.type === "text" ? b.text : "")).join("");
       const parsed = JSON.parse(text) as { title?: string; excerpt?: string };
+      posthogLogger?.emit({
+        body: "ai_generation_completed",
+        severityNumber: SeverityNumber.INFO,
+        attributes: { endpoint: "/api/studio/ai", generation_mode: mode, response_type: "metadata" },
+      });
       return json({ title: String(parsed.title ?? "").slice(0, 200), excerpt: String(parsed.excerpt ?? "").slice(0, 400) });
     } catch (e) {
       const x = explain(e);
+      await shutdownPosthog();
+      posthogLogger?.emit({
+        body: "ai_generation_failed",
+        severityNumber: SeverityNumber.WARN,
+        attributes: { endpoint: "/api/studio/ai", generation_mode: mode, failure_stage: "metadata" },
+      });
       return json({ error: x.message }, x.status);
     }
   }
@@ -123,6 +178,7 @@ export async function POST(req: Request) {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       messages: [{ role: "user", content: userPrompt }],
+      ...aiContext,
     },
     { signal: req.signal },
   );
@@ -131,6 +187,7 @@ export async function POST(req: Request) {
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
+      let failed = false;
       const safe = (fn: () => void) => {
         if (!closed) fn();
       };
@@ -140,8 +197,22 @@ export async function POST(req: Request) {
         if (final.stop_reason === "refusal") safe(() => controller.enqueue(enc.encode(`\n\n${AI_ERROR_MARKER} AI ปฏิเสธคำขอนี้ ลองปรับหัวข้อแล้วลองใหม่`)));
         else if (final.stop_reason === "max_tokens") safe(() => controller.enqueue(enc.encode(`\n\n${AI_ERROR_MARKER} บทความยาวเกินขีดจำกัด ถูกตัดตอนท้าย`)));
       } catch (e) {
+        failed = true;
         if (!req.signal.aborted) safe(() => controller.enqueue(enc.encode(`\n\n${AI_ERROR_MARKER} ${explain(e).message}`)));
+        posthogLogger?.emit({
+          body: "ai_generation_failed",
+          severityNumber: SeverityNumber.WARN,
+          attributes: { endpoint: "/api/studio/ai", generation_mode: mode, failure_stage: "stream" },
+        });
       } finally {
+        await shutdownPosthog();
+        if (!failed) {
+          posthogLogger?.emit({
+            body: "ai_generation_completed",
+            severityNumber: SeverityNumber.INFO,
+            attributes: { endpoint: "/api/studio/ai", generation_mode: mode, response_type: "stream" },
+          });
+        }
         closed = true;
         try {
           controller.close();

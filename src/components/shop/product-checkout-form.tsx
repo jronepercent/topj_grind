@@ -2,6 +2,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { AlertCircle, CreditCard, FlaskConical, Lock, Mail, QrCode, ShoppingBag } from "lucide-react";
 import { startProductCheckoutAction } from "@/app/(site)/shop/[id]/checkout/actions";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,12 @@ export function ProductCheckoutForm({
       if (from) sessionStorage.setItem(SHOP_FROM_KEY, from);
       else sessionStorage.removeItem(SHOP_FROM_KEY);
     } catch {}
+    posthog.capture("product_checkout_started", {
+      product_id: product.id,
+      product_type: product.product_type,
+      payment_method: method,
+      amount_thb: product.price_thb,
+    });
     // Stay "busy" while the browser navigates, so a second tap can't start a second checkout.
     if (r.external) window.location.assign(r.url);
     else router.push(r.url);

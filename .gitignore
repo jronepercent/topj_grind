@@ -44,3 +44,4 @@ next-env.d.ts
 
 # local database backups (contain user data)
 /backups
+.env.local

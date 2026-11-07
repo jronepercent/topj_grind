@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { LogoMark } from "@/components/ui/logo";
 import Link from "next/link";
+import posthog from "posthog-js";
 
 interface Ctx {
   viewer: Viewer | null;
@@ -40,6 +41,17 @@ export function Providers({
   const [authPrompt, setAuthPrompt] = React.useState<string | null>(null);
   const [paywall, setPaywall] = React.useState<{ open: boolean; thumb?: string | null }>({ open: false });
   const pathname = usePathname();
+
+  React.useEffect(() => {
+    if (!viewer) return;
+
+    posthog.identify(viewer.id, {
+      email: viewer.email,
+      name: viewer.display_name,
+      role: viewer.role,
+      is_member: viewer.is_member,
+    });
+  }, [viewer?.display_name, viewer?.email, viewer?.id, viewer?.is_member, viewer?.role]);
 
   const value = React.useMemo<Ctx>(
     () => ({

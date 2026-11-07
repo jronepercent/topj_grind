@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownContent, DropdownItem, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { activeUploads, useUploads } from "./upload-store";
 import { cn } from "@/lib/utils";
+import posthog from "posthog-js";
 
 const NAV = [
   { href: "/studio", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -49,10 +50,26 @@ export function StudioShell({
   viewer,
   children,
 }: {
-  viewer: { display_name: string; avatar_url: string | null };
+  viewer: {
+    id: string;
+    email: string;
+    display_name: string;
+    avatar_url: string | null;
+    role: string;
+    is_member: boolean;
+  };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+
+  React.useEffect(() => {
+    posthog.identify(viewer.id, {
+      email: viewer.email,
+      name: viewer.display_name,
+      role: viewer.role,
+      is_member: viewer.is_member,
+    });
+  }, [viewer.display_name, viewer.email, viewer.id, viewer.is_member, viewer.role]);
   return (
     <div className="min-h-dvh bg-bg">
       <header className="glass sticky top-0 z-40 border-b border-border">

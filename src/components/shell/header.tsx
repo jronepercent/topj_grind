@@ -36,6 +36,7 @@ import { thaiDate } from "@/lib/format";
 import type { Notification, ThemePref } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
+import posthog from "posthog-js";
 
 export function Header({ unread }: { unread: number }) {
   const { viewer } = useViewer();
@@ -283,6 +284,7 @@ function UserMenu() {
         <DropdownSeparator />
         <DropdownItem
           onSelect={async () => {
+            posthog.reset();
             await logoutAction();
             router.refresh();
           }}

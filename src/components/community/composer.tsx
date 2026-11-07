@@ -2,6 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import posthog from "posthog-js";
 import { ImagePlus, Loader2, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { useOptionalViewer, useViewer } from "@/components/providers";
@@ -122,6 +123,10 @@ function ComposerBox({ viewer, onPosted, placeholder, className }: { viewer: Com
       }
       const r = await createPostAction(text, urls);
       if (!r.ok) throw new Error(r.error);
+      posthog.capture("community_post_created", {
+        has_images: urls.length > 0,
+        image_count: urls.length,
+      });
       onPosted(r.data);
       setText("");
       setPicked([]);

@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import posthog from "posthog-js";
 import { EllipsisVertical, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useViewer } from "@/components/providers";
@@ -72,6 +73,7 @@ export function PostComments({ postId, initial, count }: Props) {
       toast(r.error);
       return false;
     }
+    posthog.capture("community_comment_created", { comment_type: "top_level" });
     setItems((xs) => [r.data, ...xs]);
     setTotal((t) => t + 1);
     return true;
@@ -96,6 +98,7 @@ export function PostComments({ postId, initial, count }: Props) {
                 toast(r.error);
                 return false;
               }
+              posthog.capture("community_comment_created", { comment_type: "reply" });
               setItems((xs) => xs.map((x) => (x.id === c.id ? { ...x, replies: [...x.replies, r.data] } : x)));
               setTotal((t) => t + 1);
               return true;

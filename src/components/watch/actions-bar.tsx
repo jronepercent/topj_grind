@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import posthog from "posthog-js";
 import { BadgeCheck, Clock, EllipsisVertical, Flag, ListPlus, Share2, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 import { useViewer } from "@/components/providers";
@@ -39,7 +40,10 @@ export function useLike(c: Content, initialLiked: boolean) {
       setLiked(!next);
       setCount((n) => n + (next ? -1 : 1));
       toast(r.error);
-    } else setCount(r.data.count);
+    } else {
+      setCount(r.data.count);
+      if (next) posthog.capture("content_liked", { content_type: c.type, visibility: c.visibility });
+    }
   };
   return { liked, count, pop, toggle };
 }
@@ -83,6 +87,7 @@ export function ActionsBar({ c, liked, saved: initialSaved }: { c: Content; like
       setSaved(!next);
       return toast(r.error);
     }
+    if (next) posthog.capture("content_saved", { content_type: c.type, visibility: c.visibility });
     toast(next ? "บันทึกไว้ดูภายหลังแล้ว" : "นำออกจากดูภายหลังแล้ว", {
       action: {
         label: "เลิกทำ",

@@ -3,6 +3,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { Check, Clock, Download, FlaskConical, GraduationCap, MessageCircle, ShoppingBag } from "lucide-react";
 import { productOwnedAction } from "@/app/(site)/shop/actions";
 import { SHOP_FROM_KEY } from "@/components/shop/product-checkout-form";
@@ -53,6 +54,12 @@ export function ProductSuccessPoller({
       const r = await productOwnedAction(product.id).catch(() => null);
       if (stopped) return;
       if (r && r.ok && r.owned) {
+        posthog.capture("product_purchase_confirmed", {
+          product_id: product.id,
+          product_type: product.product_type,
+          payment_method: method,
+          amount_thb: product.price_thb,
+        });
         setPhase("done");
         router.refresh();
         return;

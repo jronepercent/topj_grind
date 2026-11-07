@@ -2,6 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { Bell, Check, Clock, FlaskConical, MessageCircle, RefreshCw } from "lucide-react";
 import { membershipStatusAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,10 @@ export function SuccessPoller({
       const r = await membershipStatusAction().catch(() => null);
       if (stopped) return;
       if (r?.ok && changed(r.data)) {
+        posthog.capture("membership_payment_confirmed", {
+          plan_code: plan,
+          payment_method: method,
+        });
         setExpires(r.data.expires_at);
         setPhase("done");
         router.refresh();

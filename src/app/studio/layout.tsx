@@ -14,5 +14,18 @@ export const dynamic = "force-dynamic";
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
   const v = await getViewer();
   if (!v?.is_admin) forbidden();
-  return <StudioShell viewer={{ display_name: v.display_name, avatar_url: v.avatar_url }}>{children}</StudioShell>;
+  return (
+    <StudioShell
+      viewer={{
+        id: v.id,
+        email: v.email,
+        display_name: v.display_name,
+        avatar_url: v.avatar_url,
+        role: v.role,
+        is_member: v.is_member,
+      }}
+    >
+      {children}
+    </StudioShell>
+  );
 }
