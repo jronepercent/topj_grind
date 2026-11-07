@@ -115,7 +115,8 @@ export async function createUploadAction(input: { type: ContentType; fileName: s
           duration_sec: sanitizeDuration(input.duration),
           width: input.width ? Math.round(input.width) : null,
           height: input.height ? Math.round(input.height) : null,
-          visibility: "public",
+          // Default to "free" (sign-in wall after a teaser) so every new clip collects accounts; shorts stay public.
+          visibility: input.type === "short" ? "public" : "free",
           status: "draft",
           media_status: "uploading",
           bunny_video_id: tus?.videoId ?? null,
