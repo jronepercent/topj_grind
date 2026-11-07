@@ -180,7 +180,8 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
   return (
     <div
       className={cn(
-        "mx-auto grid max-w-[1800px] gap-x-6 sm:px-6 sm:pt-6 lg:px-8",
+        // rows [auto_1fr]: when the side list is taller, the spare height goes under the info, not under the player
+        "mx-auto grid max-w-[1800px] gap-x-6 sm:px-6 sm:pt-6 lg:grid-rows-[auto_1fr] lg:px-8",
         theater
           ? "lg:grid-cols-[minmax(0,1fr)_400px] lg:[grid-template-areas:'player_player''info_side'] lg:px-0 lg:pt-0"
           : "lg:grid-cols-[minmax(0,1fr)_400px] lg:[grid-template-areas:'player_side''info_side']",

@@ -34,7 +34,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all, trend] = await Promise.all([
     progressMap(viewer?.id),
     // Signed-in only: their answer to "ตอนนี้คุณอยู่ตรงไหน" and the matching starter path (cached settings + one profile row).
-    viewer
+    // Never for admins: the owner must not be asked (or have the answer counted in the funnel).
+    viewer && !viewer.is_admin
       ? onboardingState(viewer.id).then(async (st) => ({ ...st, path: st.stage ? await pathFor(st.stage).catch(() => []) : [] }))
       : Promise.resolve(null),
     heroSlides(),

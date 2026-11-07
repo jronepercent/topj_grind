@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { adminDb } from "@/lib/supabase/clients";
-import { isActiveUntil } from "@/lib/server/auth";
+import { isActiveUntil, requireAdmin } from "@/lib/server/auth";
 import { isLive, isUuid } from "@/lib/server/queries";
 import { timeAgo } from "@/lib/format";
 import type { AuditLog, CommentRow, ContentRow, ContentType, PaymentError, PaymentMethod } from "@/lib/types";
@@ -167,6 +167,7 @@ export function toStudioRow(c: StudioCols): StudioContentRow {
 
 /** Every clip incl. drafts and trash, newest first (Studio columns only — no media locations). */
 export async function studioContent(opts: { includeDeleted?: boolean } = {}): Promise<StudioCols[]> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   return fetchAll<StudioCols>((from, to) => {
     let q = adminDb().from("content").select(STUDIO_COLS);
     if (!opts.includeDeleted) q = q.is("deleted_at", null);
@@ -218,6 +219,7 @@ async function adminReplies(parentIds: string[], admins: Set<string>) {
 
 /** Latest top-level comments by non-admins that have no (non-deleted) admin reply yet. */
 export async function unansweredComments(limit = 5) {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const admins = await adminIds();
   const found: CommentRow[] = [];
   const page = 200;
@@ -243,6 +245,7 @@ export async function unansweredComments(limit = 5) {
 }
 
 export async function studioComments(limit = 300): Promise<StudioComment[]> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const db = adminDb();
   const admins = await adminIds();
   const notAdmin = pgList([...admins]);
@@ -330,7 +333,8 @@ export async function studioComments(limit = 300): Promise<StudioComment[]> {
 export function memberStatus(expires_at: string | null, now = Date.now()): MemberStatus {
   if (!expires_at) return "never";
   if (!isActiveUntil(expires_at, now)) return "expired";
-  if (new Date(expires_at).getTime() - now <= 3 * DAY) return "expiring";
+  // 7 days, same window as the dashboard "ภายใน 7 วัน" card and the follow-up list
+  if (new Date(expires_at).getTime() - now <= 7 * DAY) return "expiring";
   return "active";
 }
 
@@ -365,6 +369,7 @@ export function toAuthLite(u: AuthUserRaw): AuthUserLite {
 
 /** user id → auth details (email, sign-up / last sign-in time, provider), from Supabase Auth (profiles has none of these). */
 export async function authUsers(): Promise<Map<string, AuthUserLite>> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const out = new Map<string, AuthUserLite>();
   const perPage = 1000;
   for (let page = 1; ; page++) {
@@ -535,6 +540,7 @@ export async function memberSummary(rows: MemberRow[], now = Date.now()) {
 
 /** Active (expires_at > now) and expiring-within-7-days counts, admins excluded. */
 export async function membershipCounts(now = Date.now()) {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const [admins, active] = await Promise.all([
     adminIds(),
     fetchAll<{ user_id: string; expires_at: string }>(
@@ -558,6 +564,7 @@ const countOf = (res: { count: number | null; error: { message: string } | null 
 
 /** Full picture of one member, every query filtered by user id. null = no such profile. */
 export async function memberDetail(id: string, now = Date.now()): Promise<MemberDetail | null> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const db = adminDb();
   const [profileRes, authRes, subRes] = await Promise.all([
     db.from("profiles").select("id, display_name, avatar_url, is_banned, created_at, onboarding_stage, email_updates").eq("id", id).maybeSingle(),
@@ -815,6 +822,7 @@ export const getMemberDetail = cache((id: string) => (isUuid(id) ? memberDetail(
 
 /** Unresolved payment errors, payload trimmed for display. */
 export const getPaymentErrors = cache(async (): Promise<PaymentErrorEntry[]> => {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const rows = check<PaymentError[]>(
     await adminDb().from("payment_errors").select("*").eq("resolved", false).order("created_at", { ascending: false }),
     "payment errors",
@@ -832,6 +840,7 @@ export const getPaymentErrors = cache(async (): Promise<PaymentErrorEntry[]> => 
 
 /** Latest admin actions with names resolved for users / content / playlists. */
 export async function auditEntries(limit = 50): Promise<AuditEntry[]> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const db = adminDb();
   const log = check<AuditLog[]>(await db.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(limit), "audit log");
   const userIds = [...log.map((a) => a.admin_id), ...log.filter((a) => a.target_type === "user").map((a) => a.target_id)].filter(Boolean);
@@ -874,6 +883,7 @@ export interface PaymentLine {
 
 /** Newest payments across all members. */
 export async function recentPayments(limit = 50): Promise<PaymentLine[]> {
+  await requireAdmin(); // own check: the /studio layout must not be the only gate in front of member data
   const db = adminDb();
   const rows = check<{ id: string; user_id: string; paid_at: string; plan: PlanCode | null; method: PaymentMethod; amount: number | string }[]>(
     await db.from("payments").select("id, user_id, paid_at, plan, method, amount").order("paid_at", { ascending: false }).limit(limit),

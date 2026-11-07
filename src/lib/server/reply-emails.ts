@@ -111,6 +111,8 @@ export async function sendReplyEmail(i: ReplyEmailInput): Promise<ReplyEmailResu
   try {
     if (!emailConfigured()) return "skipped";
     const db = adminDb();
+    const { data: self } = await db.from("notifications").select("created_at").eq("id", i.notificationId).maybeSingle();
+    if (!self) return "skipped";
     const since = new Date(Date.now() - DEDUP_MS).toISOString();
     const [{ data: au }, { data: p }, { count: pending }] = await Promise.all([
       db.auth.admin.getUserById(i.recipientId),
@@ -123,7 +125,8 @@ export async function sendReplyEmail(i: ReplyEmailInput): Promise<ReplyEmailResu
         .in("type", ["comment", "reply"])
         .is("read_at", null)
         .gte("created_at", since)
-        .neq("id", i.notificationId),
+        // only older notices count: two comments landing together must not cancel each other's email
+        .lt("created_at", self.created_at),
     ]);
     const u = au.user;
     if (!u?.email || !u.email_confirmed_at || !p || p.is_banned || p.email_updates === false) return "skipped";

@@ -8,7 +8,12 @@ import { cn } from "@/lib/utils";
 
 export type Cue = { start: number; end: number; text: string };
 type Episode = Pick<Content, "id" | "title" | "thumbnail_url" | "duration_sec" | "has_captions">;
-type Loaded = { status: "idle" } | { status: "loading" } | { status: "ok"; cues: Cue[] } | { status: "forbidden" } | { status: "error" };
+type Loaded =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ok"; cues: Cue[]; preview: boolean }
+  | { status: "forbidden" }
+  | { status: "error" };
 
 // ───────────────────────── VTT ─────────────────────────
 function parseTime(s: string): number {
@@ -61,8 +66,9 @@ function loadCues(id: string): Promise<Loaded> {
     .then(async (r): Promise<Loaded> => {
       if (r.status === 403) return { status: "forbidden" };
       if (!r.ok) return { status: "error" };
+      const preview = r.headers.get("X-Preview") === "1"; // guest on free content: only the teaser part
       const cues = parseVtt(await r.text());
-      return cues.length ? { status: "ok", cues } : { status: "error" };
+      return cues.length ? { status: "ok", cues, preview } : preview ? { status: "forbidden" } : { status: "error" };
     })
     .catch((): Loaded => ({ status: "error" }));
   cache.set(id, p);
@@ -119,7 +125,7 @@ export function TranscriptLyrics({
     state.status === "forbidden" ? (
       <p className="t-meta flex h-full items-center justify-center px-6 text-center">ล็อกอินหรือเป็นสมาชิกเพื่ออ่านตัวหนังสือของตอนนี้</p>
     ) : state.status === "ok" ? (
-      <Scroller key={c.id} cues={state.cues} id={c.id} variant={variant} onJump={jump} />
+      <Scroller key={c.id} cues={state.cues} id={c.id} variant={variant} onJump={jump} preview={state.preview} />
     ) : (
       <div className="flex h-full flex-col gap-4 px-5 pt-6" aria-busy="true" aria-label="กำลังโหลดตัวหนังสือ">
         {[88, 64, 76, 52, 80].map((w, i) => (
@@ -164,7 +170,19 @@ export function TranscriptLyrics({
 // ───────────────────────── Scrolling lines ─────────────────────────
 const FADE = "linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%)";
 
-function Scroller({ cues, id, variant, onJump }: { cues: Cue[]; id: string; variant: "card" | "sheet"; onJump: (t: number) => void }) {
+function Scroller({
+  cues,
+  id,
+  variant,
+  onJump,
+  preview,
+}: {
+  cues: Cue[];
+  id: string;
+  variant: "card" | "sheet";
+  onJump: (t: number) => void;
+  preview?: boolean;
+}) {
   // The selector returns a number, so the store's ~4 Hz time ticks only re-render when the line changes.
   const idx = usePlayer((s) => (s.item?.id === id ? findCue(cues, s.currentTime) : -1));
   const boxRef = React.useRef<HTMLDivElement>(null);
@@ -243,6 +261,14 @@ function Scroller({ cues, id, variant, onJump }: { cues: Cue[]; id: string; vari
             {cue.text}
           </button>
         ))}
+        {preview && (
+          <a
+            href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? `/podcasts/${id}` : window.location.pathname)}`}
+            className="mt-4 inline-flex rounded-full bg-text px-4 py-2 text-[13px] font-semibold text-bg"
+          >
+            ล็อกอินฟรีเพื่ออ่านต่อ
+          </a>
+        )}
         <div aria-hidden className="h-[60%]" />
       </div>
       {paused && idx >= 0 && (

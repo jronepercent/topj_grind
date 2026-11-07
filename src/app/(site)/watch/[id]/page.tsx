@@ -58,7 +58,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
     hasSaved(viewer?.id, id),
     getLinks(id),
     getResources(id),
-    viewer ? onboardingState(viewer.id).catch(() => null) : Promise.resolve(null),
+    viewer && !viewer.is_admin ? onboardingState(viewer.id).catch(() => null) : Promise.resolve(null),
   ]);
   const plItems = pl ? await playlistItems(pl.id) : [];
   const inList = pl && plItems.some((x) => x.id === id);

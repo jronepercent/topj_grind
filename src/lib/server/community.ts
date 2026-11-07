@@ -315,12 +315,9 @@ export async function createPostComment(viewer: Viewer, postId: string, bodyIn: 
     if (!isId(parentId)) throw new HttpError(404, "ไม่พบความคิดเห็น");
     const { data } = await adminDb().from("post_comments").select("id, user_id, parent_id, post_id").eq("id", parentId).is("deleted_at", null).maybeSingle();
     if (!data || data.post_id !== postId) throw new HttpError(404, "ไม่พบความคิดเห็น");
-    parent = { id: data.id, user_id: data.user_id };
-    if (data.parent_id) {
-      // one level deep: replying to a reply attaches to its parent
-      const { data: top } = await adminDb().from("post_comments").select("id, user_id").eq("id", data.parent_id).single();
-      if (top) parent = top;
-    }
+    // `user_id` is who gets the reply notice: the person actually answered, even when
+    // the row attaches one level up (replying to a reply files it under the top comment).
+    parent = { id: data.parent_id ?? data.id, user_id: data.user_id };
   }
 
   const db = await userDb();

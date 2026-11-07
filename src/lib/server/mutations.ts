@@ -373,17 +373,14 @@ export async function createComment(viewer: Viewer, contentId: string, body: str
   if (!text) throw new HttpError(400, "กรุณาพิมพ์ข้อความ");
   if (text.length > 1000) throw new HttpError(400, "ข้อความยาวเกิน 1,000 ตัวอักษร");
 
-  let parent: { id: string; user_id: string; parent_id: string | null } | null = null;
+  let parent: { id: string; user_id: string } | null = null;
   if (parentId) {
     if (!isUuid(parentId)) throw new HttpError(404, "ไม่พบความคิดเห็น");
     const { data } = await adminDb().from("comments").select("id, user_id, parent_id").eq("id", parentId).maybeSingle();
     if (!data) throw new HttpError(404, "ไม่พบความคิดเห็น");
-    parent = data;
-    if (parent.parent_id) {
-      // one level deep: replying to a reply attaches to its parent
-      const { data: top } = await adminDb().from("comments").select("id, user_id, parent_id").eq("id", parent.parent_id).single();
-      parent = top;
-    }
+    // one level deep: replying to a reply files it under the top comment,
+    // but the notice still goes to the person actually answered
+    parent = { id: data.parent_id ?? data.id, user_id: data.user_id };
   }
 
   const db = await userDb();
