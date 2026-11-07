@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Loader2, Mail, TriangleAlert } from "lucide-react";
+import { FlaskConical, Loader2, Mail, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Field, inputClass } from "@/components/ui/misc";
@@ -81,6 +81,24 @@ export function SendEmailDialog({ type, id, title, onClose }: { type: BroadcastS
   }, [type, id]);
 
   const sending = phase.name === "sending";
+  const [test, setTest] = React.useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false });
+
+  const sendTest = async () => {
+    setTest({ busy: true });
+    try {
+      const res = await fetch("/api/studio/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, id, subject, test: true }),
+      });
+      const body = await readJson<BroadcastResult & { to: string }>(res);
+      if (!res.ok) return setTest({ busy: false, ok: false, message: body.error ?? "ส่งทดสอบไม่สำเร็จ" });
+      if (body.sent > 0) setTest({ busy: false, ok: true, message: `ส่งแล้วถึง ${body.to} ไปเช็กกล่องจดหมาย (และโฟลเดอร์สแปม)` });
+      else setTest({ busy: false, ok: false, message: body.error ?? "ส่งทดสอบไม่สำเร็จ" });
+    } catch {
+      setTest({ busy: false, ok: false, message: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง" });
+    }
+  };
 
   const send = async (info: BroadcastInfo) => {
     setPhase({ name: "sending", info });
@@ -137,6 +155,8 @@ export function SendEmailDialog({ type, id, title, onClose }: { type: BroadcastS
             subject={subject}
             setSubject={setSubject}
             sending={sending}
+            test={test}
+            onTest={sendTest}
             onCancel={onClose}
             onSend={() => send(phase.info)}
           />
@@ -155,6 +175,8 @@ function FormBody({
   subject,
   setSubject,
   sending,
+  test,
+  onTest,
   onCancel,
   onSend,
 }: {
@@ -164,6 +186,8 @@ function FormBody({
   subject: string;
   setSubject: (s: string) => void;
   sending: boolean;
+  test: { busy: boolean; ok?: boolean; message?: string };
+  onTest: () => void;
   onCancel: () => void;
   onSend: () => void;
 }) {
@@ -255,7 +279,23 @@ function FormBody({
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
+      {test.message && (
+        <p role={test.ok ? "status" : "alert"} className={cn("text-[13px] leading-5", test.ok ? "text-success" : "text-danger")}>
+          {test.message}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          variant="secondary"
+          className="mr-auto"
+          onClick={onTest}
+          disabled={notConfigured || sending || test.busy || cleanSubject.length === 0 || cleanSubject.length > SUBJECT_MAX}
+          title="ส่งอีเมลฉบับเดียวกันถึงอีเมลของคุณก่อน (ไม่นับเป็นการส่งจริง)"
+        >
+          {test.busy ? <Loader2 className="animate-spin" /> : <FlaskConical />}
+          ส่งทดสอบถึงอีเมลฉัน
+        </Button>
         <Button variant="ghost" onClick={onCancel} disabled={sending}>
           ยกเลิก
         </Button>

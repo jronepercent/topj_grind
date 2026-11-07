@@ -175,6 +175,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Attempt = { ok: true } | { ok: false; retry: boolean; error: string };
 
+/** A Thai pointer to the usual fix for Resend's common setup errors (the raw API text follows it). */
+function resendHint(status: number, message: string) {
+  const m = message.toLowerCase();
+  if (status === 401 || m.includes("api key is invalid")) return "RESEND_API_KEY ไม่ถูกต้อง (สร้างใหม่ใน Resend → API Keys แล้วใส่ใน Vercel) · ";
+  if (m.includes("not verified") || m.includes("verify a domain")) return "โดเมนผู้ส่งใน EMAIL_FROM ยังไม่ผ่านการยืนยันใน Resend (Domains ต้องเป็น Verified) · ";
+  if (m.includes("testing emails")) return "Resend ยังอยู่โหมดทดสอบ ส่งได้แค่อีเมลเจ้าของบัญชี ต้องยืนยันโดเมนก่อน · ";
+  if (status === 422 && m.includes("from")) return "รูปแบบ EMAIL_FROM ไม่ถูกต้อง ต้องเป็น ชื่อ <อีเมล@โดเมน> · ";
+  if (status === 403) return "Resend ปฏิเสธคำขอ (สิทธิ์ของ API key หรือโดเมน) · ";
+  if (status === 429) return "ส่งถี่เกินโควตาของ Resend · ";
+  return "";
+}
+
 async function postBatch(payload: unknown[], idempotencyKey: string): Promise<Attempt> {
   try {
     const res = await fetch("https://api.resend.com/emails/batch", {
@@ -189,7 +201,8 @@ async function postBatch(payload: unknown[], idempotencyKey: string): Promise<At
     });
     if (res.ok) return { ok: true };
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    return { ok: false, retry: res.status === 429 || res.status >= 500, error: `Resend ${res.status}: ${body?.message ?? res.statusText}` };
+    const msg = body?.message ?? res.statusText;
+    return { ok: false, retry: res.status === 429 || res.status >= 500, error: `${resendHint(res.status, msg)}Resend ${res.status}: ${msg}` };
   } catch (e) {
     return { ok: false, retry: true, error: `ส่งไปยัง Resend ไม่สำเร็จ: ${e instanceof Error ? e.message : "เครือข่ายผิดพลาด"}` };
   }

@@ -187,6 +187,36 @@ export interface BroadcastResult {
   error: string | null;
 }
 
+/**
+ * "ส่งทดสอบถึงอีเมลฉัน": the exact email, sent only to the signed-in admin. Not logged in email_broadcasts
+ * (so it never triggers the "already sent" warning) and its unsubscribe link is the admin's own.
+ */
+export async function sendTestBroadcast(
+  admin: { id: string; email: string; display_name: string },
+  input: { type: BroadcastSource; id: string; subject: string },
+): Promise<BroadcastResult & { to: string }> {
+  const missing = missingEmailEnv();
+  if (missing.length) throw new HttpError(503, `ระบบอีเมลยังไม่ได้ตั้งค่า (${missing.join(", ")})`);
+  const subject = input.subject.trim();
+  if (subject.length < 1 || subject.length > SUBJECT_MAX) throw new HttpError(400, `หัวข้ออีเมลต้องยาว 1–${SUBJECT_MAX} ตัวอักษร`);
+  const to = admin.email.trim();
+  if (!to) throw new HttpError(400, "บัญชีนี้ไม่มีอีเมล");
+
+  const { item } = await loadSource(input.type, input.id);
+  const result = await sendEmails(
+    [
+      {
+        to,
+        subject: `[ทดสอบ] ${subject}`.slice(0, 200),
+        unsubscribe: unsubscribePostUrl(admin.id),
+        ...renderBroadcastEmail(item, { name: admin.display_name, unsubscribeUrl: unsubscribeUrl(admin.id) }),
+      },
+    ],
+    { idempotencyPrefix: `test-${crypto.randomUUID()}`, deadlineMs: Date.now() + 15_000 },
+  );
+  return { broadcastId: "", recipients: 1, sent: result.sent, failed: result.failed, error: result.error, to };
+}
+
 // One send per item + audience at a time on this instance (a double click must not email everyone twice).
 const inFlight = new Set<string>();
 

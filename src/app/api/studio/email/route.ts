@@ -1,10 +1,11 @@
 import { HttpError, rateLimit, requireAdmin } from "@/lib/server/auth";
-import { broadcastInfo, isAudience, isSource, sendBroadcast } from "@/lib/server/broadcast";
+import { broadcastInfo, isAudience, isSource, sendBroadcast, sendTestBroadcast } from "@/lib/server/broadcast";
 
 /**
  * Admin-only "ส่งอีเมลแจ้งเตือน" endpoint.
  *   GET  ?type=content|post|article&id=…   → recipient counts, earlier sends, preview, default subject (dialog opens)
  *   POST { type, id, audience, subject }   → sends to every recipient and returns { sent, failed, … }
+ *   POST { type, id, subject, test: true } → sends the same email only to the signed-in admin (not logged)
  * A Route Handler (not a Server Action) because a send of a few thousand emails runs ~a minute.
  */
 export const runtime = "nodejs";
@@ -47,14 +48,24 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const a = await admin();
   if (a instanceof Response) return a;
-  if (!rateLimit(`email-send:${a.id}`, 5, 10 * 60_000)) return json({ error: "ส่งอีเมลถี่เกินไป รอสักครู่แล้วลองใหม่" }, 429);
 
-  let body: { type?: unknown; id?: unknown; audience?: unknown; subject?: unknown };
+  let body: { type?: unknown; id?: unknown; audience?: unknown; subject?: unknown; test?: unknown };
   try {
     body = await req.json();
   } catch {
     return json({ error: "คำขอไม่ถูกต้อง" }, 400);
   }
+  // { test: true } → send the same email only to the signed-in admin
+  if (body.test === true) {
+    if (!rateLimit(`email-test:${a.id}`, 10, 10 * 60_000)) return json({ error: "ส่งทดสอบถี่เกินไป รอสักครู่แล้วลองใหม่" }, 429);
+    if (!isSource(body.type) || typeof body.id !== "string" || typeof body.subject !== "string") return json({ error: "คำขอไม่ถูกต้อง" }, 400);
+    try {
+      return json({ ok: true, ...(await sendTestBroadcast(a, { type: body.type, id: body.id, subject: body.subject })) });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+  if (!rateLimit(`email-send:${a.id}`, 5, 10 * 60_000)) return json({ error: "ส่งอีเมลถี่เกินไป รอสักครู่แล้วลองใหม่" }, 429);
   if (!isSource(body.type) || !isAudience(body.audience) || typeof body.id !== "string" || typeof body.subject !== "string") {
     return json({ error: "คำขอไม่ถูกต้อง" }, 400);
   }
