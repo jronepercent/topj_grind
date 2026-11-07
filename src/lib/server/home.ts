@@ -56,7 +56,8 @@ export async function homeLayout(): Promise<Pick<HomeSection, "id" | "type" | "t
     }
     return out;
   }
-  const known = new Set<HomeSectionType>(DEFAULT_ORDER.map((d) => d.type).concat("custom"));
-  const title = (s: HomeSection) => s.title.trim() || DEFAULT_ORDER.find((d) => d.type === s.type)?.title || "";
+  // "freebies" is not in DEFAULT_ORDER (the pre-0014 fallback), but is a valid row once Studio has saved it (0024).
+  const known = new Set<HomeSectionType>(DEFAULT_ORDER.map((d) => d.type).concat("custom", "freebies"));
+  const title = (s: HomeSection) => s.title.trim() || DEFAULT_ORDER.find((d) => d.type === s.type)?.title || (s.type === "freebies" ? "ของฟรี" : "");
   return rows.filter((s) => s.enabled && known.has(s.type)).map((s) => ({ id: s.id, type: s.type, title: title(s), content_ids: s.content_ids }));
 }

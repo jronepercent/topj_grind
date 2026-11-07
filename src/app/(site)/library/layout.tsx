@@ -4,6 +4,7 @@ import { getViewer } from "@/lib/server/auth";
 import { EmptyState } from "@/components/ui/misc";
 import { PillTabs } from "@/components/ui/pill-tabs";
 import { LoginButton } from "@/components/shell/login-button";
+import { HubTabs } from "@/components/shell/hub-tabs";
 
 export const metadata: Metadata = {
   title: { default: "คลังของฉัน", template: "%s · คลังของฉัน · TOPJ_GRIND" },
@@ -24,6 +25,7 @@ export default async function LibraryLayout({ children }: { children: ReactNode 
   if (!viewer) {
     return (
       <div className="tg-page mx-auto max-w-[1800px] px-4 sm:px-6 lg:px-8">
+        <HubTabs active="mine" />
         <EmptyState
           art="history"
           className="py-24"
@@ -35,9 +37,10 @@ export default async function LibraryLayout({ children }: { children: ReactNode 
     );
   }
   return (
-    <div className="tg-page mx-auto max-w-[1800px] px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8">
-      <h1 className="t-h1">คลังของฉัน</h1>
-      <PillTabs tabs={TABS} label="หมวดในคลัง" className="-mx-4 mt-4 px-4 sm:mx-0 sm:px-0" />
+    <div className="tg-page mx-auto max-w-[1800px] px-4 sm:px-6 lg:px-8">
+      <HubTabs active="mine" />
+      <h1 className="sr-only">คลังของฉัน</h1>
+      <PillTabs tabs={TABS} variant="chip" label="หมวดในคลัง" className="-mx-4 mt-4 px-4 sm:mx-0 sm:px-0" />
       {children}
     </div>
   );

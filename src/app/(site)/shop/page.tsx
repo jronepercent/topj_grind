@@ -5,7 +5,8 @@ import { listProducts } from "@/lib/server/shop";
 import { ProductCard } from "@/components/shop/product-card";
 import { EmptyState } from "@/components/ui/misc";
 import { PRODUCT_TYPES, PRODUCT_TYPE_LABEL, isProductType } from "@/lib/shop";
-import { cn } from "@/lib/utils";
+import { HubTabs } from "@/components/shell/hub-tabs";
+import { chipClass } from "@/components/ui/pill-class";
 
 export const metadata: Metadata = {
   title: "ร้านค้า",
@@ -24,8 +25,9 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   const types = PRODUCT_TYPES.filter((t) => all.some((p) => p.product_type === t));
 
   return (
-    <div className="tg-page mx-auto max-w-[1400px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
-      <header>
+    <div className="tg-page mx-auto max-w-[1400px] px-4 pb-16 sm:px-6 lg:px-8">
+      <HubTabs active="shop" />
+      <header className="pt-5 sm:pt-6">
         <h1 className="t-h1">ร้านค้า</h1>
         <p className="t-meta mt-1.5 max-w-xl">E-book คอร์สเรียน และเทมเพลต จ่ายครั้งเดียว ได้ของเข้า “คลังของฉัน” ทันที ไม่ต้องเป็นสมาชิก</p>
       </header>
@@ -65,14 +67,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
 
 function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "inline-flex h-9 shrink-0 items-center rounded-full px-4 text-[14px] font-medium transition-colors",
-        active ? "bg-text text-bg" : "bg-hover text-text hover:bg-[var(--border-strong)]",
-      )}
-    >
+    <Link href={href} aria-current={active ? "page" : undefined} className={chipClass(active)}>
       {children}
     </Link>
   );

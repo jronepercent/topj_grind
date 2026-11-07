@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { pillClass } from "./pill-class";
+import { chipClass, pillClass } from "./pill-class";
 
-export { pillClass };
+export { chipClass, pillClass };
 
 export interface PillTab {
   href: string;
@@ -18,7 +18,8 @@ export interface PillTab {
 }
 
 /** Route-based tabs (one page per tab). */
-export function PillTabs({ tabs, label, className }: { tabs: PillTab[]; label: string; className?: string }) {
+/** `variant="chip"` is the smaller bordered level-2 look (see chipClass). */
+export function PillTabs({ tabs, label, className, variant = "pill" }: { tabs: PillTab[]; label: string; className?: string; variant?: "pill" | "chip" }) {
   const path = usePathname();
   const navRef = React.useRef<HTMLElement>(null);
   // On phones the row scrolls sideways: keep the current tab in view.
@@ -34,7 +35,7 @@ export function PillTabs({ tabs, label, className }: { tabs: PillTab[]; label: s
       {tabs.map((t) => {
         const on = t.match ? t.match(path) : path === t.href;
         return (
-          <Link key={t.href} href={t.href} scroll={false} aria-current={on ? "page" : undefined} className={pillClass(on)}>
+          <Link key={t.href} href={t.href} scroll={false} aria-current={on ? "page" : undefined} className={(variant === "chip" ? chipClass : pillClass)(on)}>
             {t.label}
             {t.count !== undefined && <span className={cn("tnum text-[12px]", on ? "opacity-70" : "text-text-2")}>{formatNumber(t.count)}</span>}
           </Link>

@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock, Gift, History, House, Info, Library, ListVideo, MessagesSquare, Podcast, ShoppingBag, User } from "lucide-react";
+import { Gift, House, Info, Library, ListVideo, MessagesSquare, Podcast, ShoppingBag, User } from "lucide-react";
 import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { Logo } from "@/components/ui/logo";
 import { useUI } from "@/lib/stores/player";
@@ -19,24 +19,21 @@ const PRIMARY: NavItem[] = [
   { href: "/shop", label: "ร้านค้า", icon: ShoppingBag },
   { href: "/free", label: "ของฟรี", icon: Gift },
 ];
-const YOU: NavItem[] = [
-  { href: "/library", label: "คลังของฉัน", icon: Library },
-  { href: "/library/purchases", label: "สินค้าที่ซื้อ", icon: ShoppingBag },
-  { href: "/library/history", label: "ประวัติ", icon: History },
-  { href: "/library/later", label: "ดูภายหลัง", icon: Clock },
-];
+const YOU: NavItem[] = [{ href: "/library", label: "คลังของฉัน", icon: Library }];
 const MORE: NavItem[] = [{ href: "/about", label: "เกี่ยวกับช่อง", icon: Info }];
 
-// Library sub-pages that have their own sidebar item; "คลังของฉัน" stays active only on the rest (overview, liked, courses).
-const LIBRARY_OWN = ["/library/purchases", "/library/history", "/library/later"];
-
+/** Sidebar: each item is active on its own path (and sub-paths). Library sub-pages and the shop/free pages never light each other. */
 function useActive() {
   const pathname = usePathname();
+  return (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
+}
+
+/** Mobile bottom tabs: "คลัง" is the hub, so it also covers /shop* and /free*. */
+function useTabActive() {
+  const pathname = usePathname();
   return (href: string) => {
-    if (href === "/") return pathname === "/";
-    if (LIBRARY_OWN.includes(href)) return pathname === href;
-    if (href === "/library") return pathname.startsWith("/library") && !LIBRARY_OWN.includes(pathname);
-    return pathname.startsWith(href);
+    if (href === "/library") return ["/library", "/shop", "/free"].some((h) => pathname === h || pathname.startsWith(`${h}/`));
+    return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
   };
 }
 
@@ -167,7 +164,7 @@ const TABS: NavItem[] = [
 
 /** Mobile bottom tab bar (<640px). */
 export function BottomTabs() {
-  const isActive = useActive();
+  const isActive = useTabActive();
   return (
     <nav
       className="glass tg-vv-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border sm:hidden safe-bottom"

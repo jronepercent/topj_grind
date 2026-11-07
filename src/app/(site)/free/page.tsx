@@ -8,6 +8,7 @@ import { FreebieCard } from "@/components/free/freebie-card";
 import { ProductCard } from "@/components/shop/product-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
+import { HubTabs } from "@/components/shell/hub-tabs";
 
 export const metadata: Metadata = {
   title: "ของฟรี",
@@ -25,8 +26,9 @@ export default async function FreePage() {
   const samples = products.filter((p) => p.has_sample && !p.owned);
 
   return (
-    <div className="tg-page mx-auto max-w-[1400px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
-      <header className="max-w-2xl">
+    <div className="tg-page mx-auto max-w-[1400px] px-4 pb-16 sm:px-6 lg:px-8">
+      <HubTabs active="free" />
+      <header className="max-w-2xl pt-5 sm:pt-6">
         <h1 className="t-h1">ของฟรี</h1>
         <p className="mt-2 text-[16px] leading-7 text-text-2">ไฟล์ เทมเพลต และเครื่องมือที่ JR ใช้จริง แจกฟรีทั้งหมด เลือกชิ้นที่ใช่แล้วกดรับได้เลย</p>
         {!viewer && (

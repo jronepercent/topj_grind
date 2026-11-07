@@ -13,6 +13,8 @@ import { Row } from "@/components/home/row";
 import { ROW_SIZES, ROW_W } from "@/components/home/sizes";
 import { SectionHeader } from "@/components/ui/misc";
 import { ProductsRow } from "@/components/home/products-row";
+import { FreebiesRow } from "@/components/home/freebies-row";
+import { listFreebies } from "@/lib/server/freebies";
 import { OnboardingCard } from "@/components/home/onboarding-card";
 import { onboardingState, pathFor } from "@/lib/server/onboarding";
 import { trending } from "@/lib/server/recommend";
@@ -31,7 +33,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const none = Promise.resolve<never[]>([]);
 
   // Everything below is independent — fetch in parallel, and only what an enabled row needs.
-  const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all, trend] = await Promise.all([
+  const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all, trend, freebies] = await Promise.all([
     progressMap(viewer?.id),
     // Signed-in only: their answer to "ตอนนี้คุณอยู่ตรงไหน" and the matching starter path (cached settings + one profile row).
     // Never for admins: the owner must not be asked (or have the answer counted in the funnel).
@@ -49,6 +51,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     has("all") ? categories() : Promise.resolve([]),
     has("all") ? listContent({ ...ALL_QUERY, limit: 24 }) : none,
     trending(HOME_ROW_LIMIT).catch(() => ({ window: "month" as const, items: [] as Awaited<ReturnType<typeof listContent>> })),
+    // Only when an enabled "ของฟรี" row exists. Cached list, explicit columns (no file_path); never breaks Home.
+    has("freebies") ? listFreebies().then((l) => l.slice(0, HOME_ROW_LIMIT)).catch(() => []) : none,
   ]);
 
   const locked = !viewer?.is_member;
@@ -84,6 +88,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         return mixed.length ? <Spotlight key={s.id} title={s.title} href="/#all-content" items={mixed} locked={locked} eagerLead={!heroItems.length} /> : null;
       case "products":
         return <ProductsRow key={s.id} title={s.title} userId={viewer?.id} />;
+      case "freebies":
+        return <FreebiesRow key={s.id} title={s.title} items={freebies} />;
       case "videos":
         return randomVideos.length ? (
           <Row key={s.id} title={s.title} href="/?filter=video#all-content" itemClass={ROW_W.video} shuffle>

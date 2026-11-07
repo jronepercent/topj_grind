@@ -210,7 +210,7 @@ export interface Notification {
  * the rest are automatic rows: latest (mixed newest), products, videos, articles, podcasts, playlists,
  * and `all` (the "browse everything" feed with filter chips).
  */
-export type HomeSectionType = "hero" | "continue" | "latest" | "products" | "videos" | "articles" | "podcasts" | "playlists" | "all" | "custom";
+export type HomeSectionType = "hero" | "continue" | "latest" | "products" | "freebies" | "videos" | "articles" | "podcasts" | "playlists" | "all" | "custom";
 
 export interface HomeSection {
   id: string;
