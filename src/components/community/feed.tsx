@@ -13,7 +13,7 @@ import type { FeedPage, PostView } from "@/lib/community";
 
 /** The ชุมชน feed: composer on top, pinned first, then newest. Infinite scroll with a "โหลดเพิ่ม" fallback. */
 export function CommunityFeed({ initial }: { initial: FeedPage }) {
-  const { viewer, requireAuth } = useViewer();
+  const { viewer } = useViewer();
   const [items, setItems] = React.useState(initial.items);
   const [cursor, setCursor] = React.useState(initial.cursor);
   const [hasMore, setHasMore] = React.useState(initial.hasMore);
@@ -65,8 +65,9 @@ export function CommunityFeed({ initial }: { initial: FeedPage }) {
           body="อ่านโพสต์ ถูกใจ และคุยกับ JR กับสมาชิกคนอื่น หลังเข้าสู่ระบบ"
           action={
             <div className="flex gap-2">
-              <Button variant="inverse" onClick={() => requireAuth("เข้าสู่ระบบเพื่อเข้าชุมชน")}>
-                เข้าสู่ระบบ
+              {/* Straight to /login — this card already says why; opening the sign-in modal here just asked twice. */}
+              <Button asChild variant="inverse">
+                <Link href="/login?next=%2Fcommunity">เข้าสู่ระบบ</Link>
               </Button>
               <Button asChild variant="ghost">
                 <Link href="/community/articles">อ่านบทความ</Link>

@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ImagePlus, Loader2, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { useOptionalViewer, useViewer } from "@/components/providers";
@@ -43,16 +44,18 @@ export function PostComposer({
   return <ComposerBox viewer={viewer} onPosted={onPosted} placeholder={placeholder} className={className} />;
 }
 
+/** Guests go straight to /login (and back here after) — no extra sign-in modal in between. */
 function GuestBox({ className }: { className?: string }) {
-  const { requireAuth } = useViewer();
+  const pathname = usePathname();
+  const href = `/login?next=${encodeURIComponent(pathname || "/community")}`;
   return (
     <div className={cn("flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4", className)}>
       <Avatar name="?" size={40} />
-      <button onClick={() => requireAuth("เข้าสู่ระบบเพื่อโพสต์ในชุมชน")} className="flex-1 text-left text-[14px] text-text-2">
+      <Link href={href} className="flex-1 text-left text-[14px] text-text-2">
         เข้าสู่ระบบเพื่อร่วมคุยในชุมชน…
-      </button>
-      <Button variant="inverse" size="sm" onClick={() => requireAuth("เข้าสู่ระบบเพื่อโพสต์ในชุมชน")}>
-        เข้าสู่ระบบ
+      </Link>
+      <Button asChild variant="inverse" size="sm">
+        <Link href={href}>เข้าสู่ระบบ</Link>
       </Button>
     </div>
   );
