@@ -178,7 +178,9 @@ body {
 .tg-page { animation: pageIn 350ms var(--ease-apple); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-@keyframes popIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+/* Centering lives in Tailwind v4's `translate` property (-translate-x/y-1/2), which stacks with `transform` —
+   so popIn must not translate by -50% again, or the dialog flies in from the top-left and snaps to center. */
+@keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes dropIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
 @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes sheetLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
