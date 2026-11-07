@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { adminDb } from "@/lib/supabase/clients";
 import { HttpError, requireAdmin } from "./auth";
@@ -83,11 +84,11 @@ export interface OnboardingState {
  * Cheap single-row read. If migration 0020 is not applied yet the columns do not exist: report "already onboarded"
  * so nothing is shown (and nothing breaks) until the database is ready.
  */
-export async function onboardingState(userId: string): Promise<OnboardingState> {
+export const onboardingState = cache(async (userId: string): Promise<OnboardingState> => {
   const { data, error } = await adminDb().from("profiles").select("onboarding_stage, onboarded_at").eq("id", userId).maybeSingle();
   if (error || !data) return { stage: null, onboarded: true };
   return { stage: isStage(data.onboarding_stage) ? data.onboarding_stage : null, onboarded: !!data.onboarded_at };
-}
+});
 
 /**
  * Brand-new account that has not been through onboarding: not answered/skipped yet, and the auth user was created in the last 24 hours

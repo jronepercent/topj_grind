@@ -15,6 +15,7 @@ import { SectionHeader } from "@/components/ui/misc";
 import { ProductsRow } from "@/components/home/products-row";
 import { OnboardingCard } from "@/components/home/onboarding-card";
 import { onboardingState, pathFor } from "@/lib/server/onboarding";
+import { trending } from "@/lib/server/recommend";
 import { stageInfo } from "@/lib/onboarding";
 import { MemberPitch } from "@/components/membership/member-pitch";
 import { SPOTLIGHT_COUNT, Spotlight } from "@/components/home/spotlight";
@@ -30,7 +31,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const none = Promise.resolve<never[]>([]);
 
   // Everything below is independent — fetch in parallel, and only what an enabled row needs.
-  const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all] = await Promise.all([
+  const [progress, onboarding, heroItems, mixed, videos, articles, podcasts, playlists, cont, customLists, cats, all, trend] = await Promise.all([
     progressMap(viewer?.id),
     // Signed-in only: their answer to "ตอนนี้คุณอยู่ตรงไหน" and the matching starter path (cached settings + one profile row).
     viewer
@@ -46,6 +47,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     Promise.all(layout.map((s) => (s.type === "custom" ? getContentsByIds(s.content_ids) : Promise.resolve([])))),
     has("all") ? categories() : Promise.resolve([]),
     has("all") ? listContent({ ...ALL_QUERY, limit: 24 }) : none,
+    trending(HOME_ROW_LIMIT).catch(() => ({ window: "month" as const, items: [] as Awaited<ReturnType<typeof listContent>> })),
   ]);
 
   const locked = !viewer?.is_member;
@@ -153,6 +155,18 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         return null;
     }
   });
+
+  if (trend.items.length) {
+    const trendingRow = (
+      <Row key="trending" title={trend.window === "week" ? "ยอดนิยมสัปดาห์นี้" : "ยอดนิยมเดือนนี้"} itemClass={ROW_W.video}>
+        {trend.items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+      </Row>
+    );
+    // Right under "ใหม่ล่าสุด" (or "ดูต่อ"); if both are off, under the owner's first row so it never pushes that row down.
+    const at = layout.findIndex((s) => s.type === "latest");
+    const alt = at >= 0 ? at : layout.findIndex((s) => s.type === "continue");
+    rows.splice(Math.max(alt, 0) + 1, 0, trendingRow);
+  }
 
   return (
     <div className="tg-page">

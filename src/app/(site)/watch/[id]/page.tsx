@@ -14,8 +14,8 @@ import {
   listComments,
   playlistItems,
   progressMap,
-  related,
 } from "@/lib/server/queries";
+import { upNext } from "@/lib/server/recommend";
 import { WatchClient } from "@/components/watch/watch-client";
 import { ActionsBar, ChannelRow } from "@/components/watch/actions-bar";
 import { DescriptionBox } from "@/components/watch/description-box";
@@ -52,7 +52,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
   const [p, pl, rel, comments, liked, saved, links, resources, ob] = await Promise.all([
     getProgress(viewer?.id, id),
     list ? getPlaylist(list, viewer?.id) : Promise.resolve(null),
-    related(c, 14),
+    upNext(c, viewer?.id ?? null, 14),
     listComments(id, viewer, { sort: "top", limit: 20 }),
     hasLiked(viewer?.id, id),
     hasSaved(viewer?.id, id),
