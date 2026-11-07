@@ -5,6 +5,7 @@ import { listContent, playlistsWithMeta } from "@/lib/server/queries";
 import { contentHref } from "@/lib/format";
 import { articleSitemap } from "@/lib/server/community";
 import { shopSitemap } from "@/lib/server/shop";
+import { freebiesSitemap } from "@/lib/server/freebies";
 import { LEGAL_LINKS } from "@/lib/legal";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
@@ -14,6 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const content = await listContent({ visibility: ["public", "free"], limit: 5000 });
   const articles = await articleSitemap().catch(() => []);
   const products = await shopSitemap();
+  const freebies = await freebiesSitemap();
   return [
     { url: `${SITE}/`, changeFrequency: "daily", priority: 1 },
     { url: `${SITE}/community`, changeFrequency: "daily" },
@@ -22,9 +24,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE}/about`, changeFrequency: "monthly" },
     { url: `${SITE}/membership`, changeFrequency: "monthly" },
     { url: `${SITE}/shop`, changeFrequency: "daily" },
+    { url: `${SITE}/free`, changeFrequency: "weekly" },
     ...LEGAL_LINKS.map((l) => ({ url: `${SITE}${l.href}`, changeFrequency: "yearly" as const, priority: 0.2 })),
     ...content.map((c) => ({ url: `${SITE}${contentHref(c)}`, lastModified: c.updated_at })),
     ...products.map((p) => ({ url: `${SITE}/shop/${p.id}`, lastModified: p.updated_at })),
+    ...freebies.map((f) => ({ url: `${SITE}/free/${f.id}`, lastModified: f.updated_at })),
     ...articles.map((a) => ({ url: `${SITE}/community/articles/${a.id}`, lastModified: a.updated_at })),
     ...(await playlistsWithMeta(null))
       .filter((p) => p.visibility === "public")

@@ -28,6 +28,7 @@ export type AnalyticsEvent =
   | "product_checkout_started"
   | "product_purchased"
   | "sample_downloaded"
+  | "freebie_claimed"
   | "community_post_created"
   | "testimonial_played";
 
