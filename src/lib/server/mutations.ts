@@ -44,6 +44,13 @@ export async function markAllRead(userId: string) {
   await db.from("notifications").update({ read_at: nowIso() }).eq("user_id", userId).is("read_at", null);
 }
 
+/** One notification opened from the bell. */
+export async function markRead(userId: string, id: string) {
+  if (!isUuid(id)) return;
+  const db = await userDb();
+  await db.from("notifications").update({ read_at: nowIso() }).eq("id", id).eq("user_id", userId).is("read_at", null);
+}
+
 // ───────────────────────── Publishing ─────────────────────────
 /** Fields that make a clip go live "now". */
 export function publishNowPatch() {

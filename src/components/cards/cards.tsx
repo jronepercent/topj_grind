@@ -237,15 +237,54 @@ export function PodcastPlayButton({ c, queue, size = "md", startAt }: { c: Conte
   );
 }
 
-export function PodcastCard({ c, queue, progress, sizes }: { c: Content; queue?: Content[]; progress?: ProgressMap; sizes?: string }) {
+/**
+ * `wide`: use when the card sits among 16:9 video cards (ดูต่อ, starter path, trending, custom rows, the all-content grid).
+ * Square art in a video-width slot is ~130px taller on a phone and leaves a big empty band under the whole row,
+ * so the art is shown whole (contain) inside a 16:9 frame over a blurred copy of itself.
+ */
+export function PodcastCard({
+  c,
+  queue,
+  progress,
+  sizes,
+  wide,
+}: {
+  c: Content;
+  queue?: Content[];
+  progress?: ProgressMap;
+  sizes?: string;
+  wide?: boolean;
+}) {
   const ratio = progressRatio(c, progress);
+  const imgSizes = sizes ?? "(max-width:640px) 45vw, 220px";
   return (
     <article className="group relative w-full">
       <Link href={`/podcasts/${c.id}`} className="block" aria-label={c.title}>
-        <Thumb src={c.thumbnail_url} alt="" ratio="1/1" sizes={sizes ?? "(max-width:640px) 45vw, 220px"}>
-          <VisibilityBadge c={c} />
-          <ProgressBar value={ratio} />
-        </Thumb>
+        {wide ? (
+          <div className="relative overflow-hidden rounded-[12px] bg-surface" style={{ aspectRatio: "16/9" }}>
+            {c.thumbnail_url && (
+              <>
+                {/* Same src + sizes as the art below, so the browser downloads it once. */}
+                <Image src={c.thumbnail_url} alt="" aria-hidden fill sizes={imgSizes} fetchPriority="low" className="scale-125 object-cover opacity-50 blur-2xl" />
+                <Image
+                  src={c.thumbnail_url}
+                  alt=""
+                  fill
+                  sizes={imgSizes}
+                  fetchPriority="low"
+                  className="object-contain transition-transform duration-150 ease-[var(--ease-apple)] group-hover:scale-[1.02]"
+                />
+              </>
+            )}
+            <VisibilityBadge c={c} />
+            <ProgressBar value={ratio} />
+          </div>
+        ) : (
+          <Thumb src={c.thumbnail_url} alt="" ratio="1/1" sizes={imgSizes}>
+            <VisibilityBadge c={c} />
+            <ProgressBar value={ratio} />
+          </Thumb>
+        )}
       </Link>
       <div className="mt-3 flex items-start gap-3">
         <div className="min-w-0 flex-1">

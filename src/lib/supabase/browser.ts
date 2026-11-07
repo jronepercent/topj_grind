@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
 
-/** Browser client that reads the same session cookie as the server. Used only to get the admin's access token for direct-to-Storage uploads. */
+/** Browser client that reads the same session cookie as the server. Used for the admin's access token (direct-to-Storage uploads) and the header bell's Realtime subscription. */
 export function browserDb(): SupabaseClient {
   if (!client) client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   return client;

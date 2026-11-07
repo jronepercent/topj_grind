@@ -68,7 +68,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <OnboardingCard key="onboarding" />
     ) : onboarding?.stage && onboarding.path.length > 0 && pathDone < onboarding.path.length ? (
       <Row key="starter-path" title={`${stageInfo(onboarding.stage).pathTitle} · ${pathDone}/${onboarding.path.length}`} href="/welcome" itemClass={ROW_W.video}>
-        {onboarding.path.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+        {onboarding.path.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.video} wide /> : clip(c)))}
       </Row>
     ) : null;
 
@@ -77,7 +77,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       case "continue":
         return cont.length ? (
           <Row key={s.id} title={s.title} itemClass={ROW_W.video}>
-            {cont.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+            {cont.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.video} wide /> : clip(c)))}
           </Row>
         ) : null;
       case "latest":
@@ -138,7 +138,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         const items = customLists[idx] ?? [];
         return items.length ? (
           <Row key={s.id} title={s.title} itemClass={ROW_W.video}>
-            {items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+            {items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.video} wide /> : clip(c)))}
           </Row>
         ) : null;
       }
@@ -160,7 +160,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (trend.items.length) {
     const trendingRow = (
       <Row key="trending" title={trend.window === "week" ? "ยอดนิยมสัปดาห์นี้" : "ยอดนิยมเดือนนี้"} itemClass={ROW_W.video}>
-        {trend.items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.podcast} /> : clip(c)))}
+        {trend.items.map((c) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes={ROW_SIZES.video} wide /> : clip(c)))}
       </Row>
     );
     // Right under "ใหม่ล่าสุด" (or "ดูต่อ"); if both are off, under the owner's first row so it never pushes that row down.

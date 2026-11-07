@@ -2,7 +2,8 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   Bell,
   BookOpen,
@@ -30,7 +31,8 @@ import { useViewer } from "@/components/providers";
 import { useSubscribeHref } from "@/components/content/paywall";
 import { SearchBox } from "./search-box";
 import { useUI } from "@/lib/stores/player";
-import { markAllReadAction, notificationsAction, setThemeAction } from "@/app/actions";
+import { markAllReadAction, markReadAction, notificationsAction, setThemeAction, unreadCountAction } from "@/app/actions";
+import { browserDb } from "@/lib/supabase/browser";
 import { logoutAction } from "@/app/(auth)/auth-actions";
 import { thaiDate } from "@/lib/format";
 import type { Notification, ThemePref } from "@/lib/types";
@@ -137,18 +139,102 @@ function CreateMenu() {
   );
 }
 
+/**
+ * The (site) layout counts unread once per full page load and does NOT re-render on client navigation, so the bell
+ * keeps itself fresh: Supabase Realtime pushes INSERT/UPDATE on the viewer's own rows (RLS-filtered, migration 0024),
+ * and as a safety net it re-counts on every navigation, when the tab comes back, and every 60s while Realtime is down.
+ */
 function NotificationBell({ initialUnread }: { initialUnread: number }) {
+  const { viewer } = useViewer();
+  const userId = viewer?.id;
+  const pathname = usePathname();
   const [unread, setUnread] = React.useState(initialUnread);
   const [items, setItems] = React.useState<Notification[] | null>(null);
+  const [live, setLive] = React.useState(false);
+  const openRef = React.useRef(false);
   React.useEffect(() => setUnread(initialUnread), [initialUnread]);
+
+  const loadItems = React.useCallback(async () => {
+    const r = await notificationsAction();
+    if (r.ok) setItems(r.data);
+  }, []);
+
+  // Coalesce bursts (mark-all-read fires one UPDATE per row) into one count query.
+  const countTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recount = React.useCallback(() => {
+    if (countTimer.current) clearTimeout(countTimer.current);
+    countTimer.current = setTimeout(async () => {
+      const r = await unreadCountAction();
+      if (r.ok) setUnread(r.data);
+      if (openRef.current) void loadItems();
+    }, 300);
+  }, [loadItems]);
+  React.useEffect(() => () => void (countTimer.current && clearTimeout(countTimer.current)), []);
+
+  // Realtime: the viewer's own notifications.
+  React.useEffect(() => {
+    if (!userId) return;
+    const db = browserDb();
+    let channel: RealtimeChannel | null = null;
+    let cancelled = false;
+    (async () => {
+      const { data } = await db.auth.getSession();
+      if (cancelled || !data.session) return;
+      db.realtime.setAuth(data.session.access_token);
+      const filter = `user_id=eq.${userId}`;
+      channel = db
+        .channel(`notifications:${userId}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter }, (p) => {
+          const n = p.new as Notification;
+          if (!n.read_at) setUnread((u) => u + 1);
+          setItems((xs) => (xs ? [n, ...xs.filter((x) => x.id !== n.id)].slice(0, 30) : xs));
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter }, (p) => {
+          const n = p.new as Notification;
+          setItems((xs) => xs?.map((x) => (x.id === n.id ? n : x)) ?? xs);
+          recount();
+        })
+        .subscribe((status) => setLive(status === "SUBSCRIBED"));
+    })();
+    return () => {
+      cancelled = true;
+      setLive(false);
+      if (channel) void db.removeChannel(channel);
+    };
+  }, [userId, recount]);
+
+  // Safety net: navigation, tab focus, and polling while Realtime is not connected.
+  const firstPath = React.useRef(true);
+  React.useEffect(() => {
+    if (firstPath.current) {
+      firstPath.current = false;
+      return;
+    }
+    recount();
+  }, [pathname, recount]);
+  React.useEffect(() => {
+    const onVisible = () => document.visibilityState === "visible" && recount();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [recount]);
+  React.useEffect(() => {
+    if (live) return;
+    const t = setInterval(() => document.visibilityState === "visible" && recount(), 60_000);
+    return () => clearInterval(t);
+  }, [live, recount]);
+
+  const openOne = (n: Notification) => {
+    if (n.read_at) return;
+    setUnread((u) => Math.max(0, u - 1));
+    setItems((xs) => xs?.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)) ?? null);
+    void markReadAction(n.id);
+  };
 
   return (
     <Dropdown
-      onOpenChange={async (o) => {
-        if (o) {
-          const r = await notificationsAction();
-          if (r.ok) setItems(r.data);
-        }
+      onOpenChange={(o) => {
+        openRef.current = o;
+        if (o) void loadItems();
       }}
     >
       <DropdownTrigger asChild>
@@ -185,7 +271,7 @@ function NotificationBell({ initialUnread }: { initialUnread: number }) {
           ) : (
             items.map((n) => (
               <DropdownItem key={n.id} asChild className="items-start rounded-none px-4 py-3">
-                <Link href={n.link ?? "#"}>
+                <Link href={n.link ?? "#"} onClick={() => openOne(n)}>
                   <span className={cn("mt-2 size-1.5 shrink-0 rounded-full", n.read_at ? "bg-transparent" : "bg-accent")} />
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 block text-[14px] leading-5">

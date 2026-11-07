@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { HttpError, rateLimit, requireAdmin, requireUser, getViewer } from "@/lib/server/auth";
 import * as M from "@/lib/server/mutations";
-import { type FeedQuery, getCommentView, listComments, listReplies, suggest as suggestQuery, listContent, notificationsFor } from "@/lib/server/queries";
+import { type FeedQuery, getCommentView, listComments, listReplies, suggest as suggestQuery, listContent, notificationsFor, unreadCount } from "@/lib/server/queries";
 import { storeImage } from "@/lib/server/images";
 import { userDb } from "@/lib/supabase/clients";
 import type { ThemePref } from "@/lib/types";
@@ -136,6 +136,20 @@ export async function markAllReadAction() {
   return run(async () => {
     const v = await requireUser();
     await M.markAllRead(v.id);
+  });
+}
+
+export async function unreadCountAction() {
+  return run(async () => {
+    const v = await requireUser();
+    return unreadCount(v.id);
+  });
+}
+
+export async function markReadAction(id: string) {
+  return run(async () => {
+    const v = await requireUser();
+    await M.markRead(v.id, id);
   });
 }
 

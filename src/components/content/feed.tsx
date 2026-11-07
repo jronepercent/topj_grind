@@ -13,7 +13,7 @@ export const GRID = "grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-col
 export function ContentGrid({ items, progress, priorityFirst }: { items: Content[]; progress?: ProgressMap; priorityFirst?: boolean }) {
   return (
     <div className={GRID}>
-      {items.map((c, i) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} /> : <VideoCard key={c.id} c={c} progress={progress} priority={priorityFirst && i < 4} />))}
+      {items.map((c, i) => (c.type === "podcast" ? <PodcastCard key={c.id} c={c} progress={progress} sizes="(max-width:640px) 100vw, 360px" wide /> : <VideoCard key={c.id} c={c} progress={progress} priority={priorityFirst && i < 4} />))}
     </div>
   );
 }
