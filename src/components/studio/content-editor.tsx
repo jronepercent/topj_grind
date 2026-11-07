@@ -12,6 +12,7 @@ import {
   Globe,
   ImagePlus,
   Lock,
+  LogIn,
   Paperclip,
   Plus,
   X,
@@ -23,7 +24,7 @@ import { saveContentAction, type ContentInput } from "@/app/studio/actions";
 import { contentHref, formatBytes, thaiDateTime } from "@/lib/format";
 import { isValidUrl } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
-import type { ContentType, Visibility } from "@/lib/types";
+import type { ContentType, ContentVisibility } from "@/lib/types";
 import type { EditorData, EditorOptions } from "./types";
 import { SortableItem, SortableList } from "./sortable";
 import { emailDisabledReason, SendEmailButton } from "./send-email-button";
@@ -56,7 +57,7 @@ interface Form {
   thumbnail_url: string | null;
   category_id: string | null;
   tags: string[];
-  visibility: Visibility;
+  visibility: ContentVisibility;
   comments_enabled: boolean;
   linked_content_id: string | null;
   linked_start: string;
@@ -813,13 +814,20 @@ function StepVisibility({
   return (
     <div className="space-y-10">
       <Section title="ใครดูได้">
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="การมองเห็น">
+        <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="การมองเห็น">
           <RadioCard
             checked={form.visibility === "public"}
             onSelect={() => set("visibility", "public")}
             icon={<Globe className="size-5 text-text-2" strokeWidth={1.75} />}
             title="สาธารณะ"
             body="ทุกคนดูได้ ไม่ต้องเป็นสมาชิก"
+          />
+          <RadioCard
+            checked={form.visibility === "free"}
+            onSelect={() => set("visibility", "free")}
+            icon={<LogIn className="size-5 text-text-2" strokeWidth={1.75} />}
+            title="ฟรีเมื่อล็อกอิน"
+            body="คนที่ยังไม่ล็อกอินดูได้ 60 วินาทีแรก แล้วต้องล็อกอินฟรีถึงดูต่อ — ใช้เก็บรายชื่อลูกค้า"
           />
           <RadioCard
             checked={form.visibility === "members"}

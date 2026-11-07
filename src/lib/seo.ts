@@ -6,7 +6,7 @@ const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
 
 /** Public: full OG. Members: cover + title + "สำหรับสมาชิก TOPJ_GRIND" (no extra detail). */
 export function contentMetadata(c: Content, path: string): Metadata {
-  const isPublic = c.visibility === "public";
+  const isPublic = c.visibility !== "members"; // free = public for SEO (guests get a teaser)
   const description = isPublic ? excerpt(c.description, 160) : "สำหรับสมาชิก TOPJ_GRIND";
   const images = c.thumbnail_url ? [{ url: c.thumbnail_url }] : undefined;
   return {

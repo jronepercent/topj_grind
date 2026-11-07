@@ -2,7 +2,7 @@ import * as React from "react";
 import { Headphones, Lock } from "lucide-react";
 import { formatDuration, formatNumber, TYPE_LABEL, thaiDate, thaiDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ContentType, MediaStatus, PublishStatus, Visibility } from "@/lib/types";
+import type { ContentType, MediaStatus, PublishStatus, ContentVisibility } from "@/lib/types";
 import type { DailyPoint } from "./types";
 
 /** Studio building blocks — server-safe (no hooks), usable from client components too. */
@@ -108,7 +108,9 @@ export function TypeLabel({ type }: { type: ContentType }) {
   return <span className="text-[13px] text-text-2">{TYPE_LABEL[type]}</span>;
 }
 
-export function VisibilityLabel({ v }: { v: Visibility }) {
+export function VisibilityLabel({ v }: { v: ContentVisibility }) {
+  if (v === "free")
+    return <span className="text-[13px] font-medium text-[#8a6d1f] dark:text-[#E8C77A]">ฟรี (ล็อกอิน)</span>;
   return v === "members" ? (
     <span className="inline-flex items-center gap-1 text-[13px] font-medium text-member">
       <Lock className="size-3.5" strokeWidth={2} aria-hidden /> เฉพาะสมาชิก

@@ -64,8 +64,8 @@ function MiniVideo({ item }: { item: PlayerItem }) {
 
 // ───────────────────────── Audio (podcast) ─────────────────────────
 function AudioPlayer({ item, nonce }: { item: PlayerItem; nonce: number }) {
-  const { status, retry } = useAudioEngine(item, nonce);
-  const { openPaywall } = useViewer();
+  const { status, retry, gate } = useAudioEngine(item, nonce);
+  const { openPaywall, requireAuth } = useViewer();
   const close = usePlayer((s) => s.close);
 
   React.useEffect(() => {
@@ -73,6 +73,11 @@ function AudioPlayer({ item, nonce }: { item: PlayerItem; nonce: number }) {
     close();
     openPaywall(item.thumb);
   }, [status, close, openPaywall, item.thumb]);
+
+  // Guest reached the end of the free teaser: ask them to sign in (again each time they press play).
+  React.useEffect(() => {
+    if (gate > 0) requireAuth("ฟังต่อฟรี แค่ล็อกอิน");
+  }, [gate, requireAuth]);
 
   if (status === "unavailable")
     return (
@@ -83,7 +88,7 @@ function AudioPlayer({ item, nonce }: { item: PlayerItem; nonce: number }) {
         </button>
       </Bar>
     );
-  return <AudioUI item={item} loading={status === "loading"} />;
+  return <AudioUI item={item} loading={status === "loading"} gated={status === "login_required"} />;
 }
 
 function Bar({ item, children }: { item: PlayerItem; children: React.ReactNode }) {
@@ -112,7 +117,7 @@ function Cover({ src, size, className }: { src: string | null; size: number; cla
 
 const SPEEDS = [0.8, 1, 1.25, 1.5, 1.75, 2];
 
-function AudioUI({ item, loading }: { item: PlayerItem; loading: boolean }) {
+function AudioUI({ item, loading, gated }: { item: PlayerItem; loading: boolean; gated?: boolean }) {
   const { expanded, setExpanded, close, queue, sleep, setSleep, play, paused, currentTime: time, rate, controls } = usePlayer();
   const duration = usePlayer((s) => s.duration) || item.duration;
   // Same calls the old media-remote made, now routed to the shared <audio> element.
@@ -139,7 +144,7 @@ function AudioUI({ item, loading }: { item: PlayerItem; loading: boolean }) {
             <span className="min-w-0">
               <span className="line-clamp-1 block text-[14px] font-medium">{item.title}</span>
               <span className="tnum line-clamp-1 block text-[12px] text-text-2">
-                {loading ? "กำลังโหลด…" : `${chapter ? chapter.title + " · " : ""}${formatDuration(time)} / ${formatDuration(duration)}`}
+                {loading ? "กำลังโหลด…" : gated ? "ล็อกอินฟรีเพื่อฟังต่อ" : `${chapter ? chapter.title + " · " : ""}${formatDuration(time)} / ${formatDuration(duration)}`}
               </span>
             </span>
           </button>

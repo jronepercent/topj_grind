@@ -4,7 +4,8 @@ import { usePlayer, type PlayerItem } from "@/lib/stores/player";
 import { getAudio } from "@/lib/stores/audio-element";
 import { fetchPlaySource, useProgressSaver, useViewTracker, type PlayFetch, type PlaySource } from "./playback-hooks";
 
-export type AudioStatus = "loading" | "ready" | "unavailable" | "members_only";
+/** "login_required" = a guest reached the end of the free teaser of a "free" episode. */
+export type AudioStatus = "loading" | "ready" | "unavailable" | "members_only" | "login_required";
 
 const SEEK_BACK = 15;
 const SEEK_FWD = 30;
@@ -23,6 +24,8 @@ interface Engine {
   loadedId: string | null;
   pendingSeek: number;
   expiresAt: number | null;
+  /** guest teaser length of the loaded source (seconds), null = full access */
+  previewSec: number | null;
   /** the listener wants sound (set by play, cleared by a real pause) */
   intent: boolean;
   lastTime: number;
@@ -46,6 +49,8 @@ interface Engine {
  */
 export function useAudioEngine(item: PlayerItem, nonce: number) {
   const [status, setStatus] = React.useState<AudioStatus>("loading");
+  /** bumps every time the preview gate is hit, so the UI can prompt again */
+  const [gate, setGate] = React.useState(0);
   const trackView = useViewTracker(item.id, "podcast");
   const progress = useProgressSaver(item.id);
 
@@ -61,6 +66,7 @@ export function useAudioEngine(item: PlayerItem, nonce: number) {
       loadedId: null,
       pendingSeek: 0,
       expiresAt: null,
+      previewSec: null,
       intent: false,
       lastTime: 0,
       retries: 0,
@@ -116,6 +122,7 @@ export function useAudioEngine(item: PlayerItem, nonce: number) {
       e.prefetchTried.delete(it.id);
       e.pendingSeek = seek > 0 ? seek : 0;
       e.expiresAt = src.expiresAt ?? null;
+      e.previewSec = src.previewSec ?? null;
       e.lastTime = seek > 0 ? seek : 0;
       a.src = src.src;
       a.preload = "auto";
@@ -288,8 +295,23 @@ export function useAudioEngine(item: PlayerItem, nonce: number) {
         e.lastTime = t;
         clearTimeout(e.stall);
         if (e.retries && t - e.retryBase > 30) e.retries = 0;
-        live.current.trackView(t, a.paused, d);
-        live.current.progress.tick(t, d);
+        const cut = e.previewSec;
+        if (cut) {
+          // Guest teaser: stop at the cut-off (also when they seek past it) and ask them to sign in.
+          if (t >= cut) {
+            e.intent = false;
+            a.pause();
+            if (t > cut + 0.25) a.currentTime = cut;
+            e.lastTime = cut;
+            st().sync({ paused: true, currentTime: cut });
+            setStatus("login_required");
+            setGate((n) => n + 1);
+            return;
+          }
+        } else {
+          live.current.trackView(t, a.paused, d);
+          live.current.progress.tick(t, d);
+        }
         const now = Date.now();
         if (now - e.lastSync > 250) {
           e.lastSync = now;
@@ -457,5 +479,5 @@ export function useAudioEngine(item: PlayerItem, nonce: number) {
     void e.load(it, Math.max(e.lastTime, it.startAt ?? 0), true);
   }, []);
 
-  return { status, retry };
+  return { status, retry, gate };
 }

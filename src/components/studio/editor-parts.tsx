@@ -8,7 +8,7 @@ import { imageUploadAction, mediaStatusAction } from "@/app/studio/actions";
 import { formatDuration } from "@/lib/format";
 import { parseChapters, tokenize } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
-import type { ContentType, MediaStatus, Visibility } from "@/lib/types";
+import type { ContentType, MediaStatus, ContentVisibility } from "@/lib/types";
 import { useUploads } from "./upload-store";
 
 // ───────── Time helpers (Asia/Bangkok, UTC+7, no DST) ─────────
@@ -345,15 +345,19 @@ export function CardPreview({
   title: string;
   thumb: string | null;
   duration: number;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   channelName: string;
   channelAvatar: string | null;
 }) {
   const t = title.trim() || "ชื่อคลิปจะแสดงตรงนี้";
-  const badge = visibility === "members" && (
+  const badge = visibility === "free" ? (
+    <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-[#E8C77A] px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#1d1606]">ฟรี · ล็อกอิน</span>
+  ) : (
+    visibility === "members" && (
     <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#E8C77A] backdrop-blur">
       <Lock className="size-3" strokeWidth={2.25} aria-hidden /> สมาชิก
     </span>
+    )
   );
   const img = thumb ? (
     // eslint-disable-next-line @next/next/no-img-element

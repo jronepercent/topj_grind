@@ -175,7 +175,7 @@ function ResourcesBlock({ resources, visibility, unlocked }: { resources: Omit<C
           </div>
         ))}
       </div>
-      {locked && visibility === "public" && <p className="t-caption mt-2 text-text-2">คลิปนี้ดูฟรี แต่ไฟล์ประกอบสำหรับสมาชิกเท่านั้น</p>}
+      {locked && visibility !== "members" && <p className="t-caption mt-2 text-text-2">คลิปนี้ดูฟรี แต่ไฟล์ประกอบสำหรับสมาชิกเท่านั้น</p>}
     </div>
   );
 }

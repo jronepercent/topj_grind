@@ -4,6 +4,7 @@ import type {
   PaymentMethod,
   PublishStatus,
   Visibility,
+  ContentVisibility,
 } from "@/lib/types";
 import { PAYMENT_METHOD_LABEL } from "@/lib/plans";
 
@@ -21,7 +22,7 @@ export interface StudioContentRow {
   title: string;
   thumbnail_url: string | null;
   duration_sec: number;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   status: PublishStatus;
   media_status: MediaStatus;
   publish_when_ready: boolean;
@@ -42,7 +43,7 @@ export interface PickItem {
   title: string;
   thumbnail_url: string | null;
   duration_sec: number;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   live: boolean;
 }
 
@@ -54,7 +55,7 @@ export interface EditorData {
   thumbnail_url: string | null;
   category_id: string | null;
   tags: string[];
-  visibility: Visibility;
+  visibility: ContentVisibility;
   comments_enabled: boolean;
   linked_content_id: string | null;
   linked_start_sec: number | null;

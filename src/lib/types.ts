@@ -1,5 +1,7 @@
 export type ContentType = "video" | "short" | "podcast";
 export type Visibility = "public" | "members";
+/** Content adds a middle level: "free" = free for anyone signed in (guests get a short preview). Playlists stay public|members. */
+export type ContentVisibility = Visibility | "free";
 export type PublishStatus = "draft" | "scheduled" | "published";
 export type MediaStatus = "uploading" | "processing" | "ready" | "failed";
 export type Role = "user" | "admin";
@@ -66,7 +68,7 @@ export interface ContentRow {
   duration_sec: number;
   width: number | null;
   height: number | null;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   status: PublishStatus;
   media_status: MediaStatus;
   /** "เผยแพร่ทันที" chosen before media finished processing → publish when ready */

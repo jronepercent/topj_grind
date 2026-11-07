@@ -5,6 +5,7 @@ import { adminDb, must } from "@/lib/supabase/clients";
 import { isActiveUntil } from "./auth";
 import { bunnyImagesPublic, isBunnyCdnUrl } from "./bunny";
 import { parseChapters } from "@/lib/richtext";
+import { contentAccess } from "@/lib/access";
 import { resolveHeroSlide } from "@/lib/hero";
 import type {
   Category,
@@ -16,6 +17,7 @@ import type {
   ContentResource,
   ContentRow,
   ContentType,
+  ContentVisibility,
   HeroSlide,
   HeroSlideRow,
   HomeSection,
@@ -126,15 +128,17 @@ export function toPublic(c: ContentRow | Content): Content {
 }
 
 /**
- * May this viewer watch / listen? Public → anyone. Members-only → admins, members, and buyers of a course product whose
+ * May this viewer watch / listen? Public → anyone. Free → anyone signed in. Members-only → admins, members, and buyers of a course product whose
  * playlist contains the clip. Pass `unlocked` (from ownedCourseContentIds) so the course rule is applied without a query;
  * leave it out for the plain membership rule, or use canWatchContent() when you only have a viewer.
  */
 export function canWatch(viewer: Viewer | null, c: Pick<ContentRow, "visibility"> & { id?: string }, unlocked?: ReadonlySet<string> | null) {
-  if (c.visibility === "public") return true;
-  if (!viewer) return false;
-  if (viewer.is_admin || viewer.is_member) return true;
-  return !!c.id && !!unlocked?.has(c.id);
+  return contentAccess(viewer, c.visibility, !!c.id && !!unlocked?.has(c.id)) === "ok";
+}
+
+/** A guest on "free" content gets a short preview (the player cuts it off and asks them to sign in). */
+export function canPreview(viewer: Viewer | null, c: Pick<ContentRow, "visibility">) {
+  return !viewer && c.visibility === "free";
 }
 
 /** Async form of canWatch() that also honours course purchases (one cached lookup per request). */
@@ -192,7 +196,7 @@ export interface FeedQuery {
   type?: ContentType;
   types?: ContentType[];
   categoryId?: string;
-  visibility?: "public" | "members";
+  visibility?: ContentVisibility | ContentVisibility[];
   limit?: number;
   offset?: number;
   exclude?: string[];
@@ -202,7 +206,7 @@ export async function listContent(opts: FeedQuery = {}) {
   let rows = await liveRows(opts.type);
   if (opts.types?.length) rows = rows.filter((c) => opts.types!.includes(c.type));
   if (opts.categoryId) rows = rows.filter((c) => c.category_id === opts.categoryId);
-  if (opts.visibility) rows = rows.filter((c) => c.visibility === opts.visibility);
+  if (opts.visibility) rows = rows.filter((c) => [opts.visibility!].flat().includes(c.visibility));
   if (opts.exclude?.length) rows = rows.filter((c) => !opts.exclude!.includes(c.id));
   const offset = opts.offset ?? 0;
   return rows.slice(offset, offset + (opts.limit ?? 24)).map(toPublic);

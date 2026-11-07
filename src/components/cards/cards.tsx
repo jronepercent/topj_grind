@@ -87,9 +87,21 @@ function progressRatio(c: Content, progress?: ProgressMap) {
   return c.duration_sec ? p.position_sec / c.duration_sec : 0;
 }
 
-/** Badge rule: non-members see 🔒 + "สมาชิก", members see a small "สมาชิก" without the lock. */
+/** "Free once signed in" pill: shown to guests only (signed-in viewers already have access). */
+export function FreeBadge({ className }: { className?: string }) {
+  const { viewer } = useViewer();
+  if (viewer) return null;
+  return (
+    <span className={cn("inline-flex items-center rounded-full bg-[#E8C77A] px-2 py-0.5 text-[11px] font-semibold leading-[16px] text-[#1d1606]", className)}>
+      ฟรี · ล็อกอิน
+    </span>
+  );
+}
+
+/** Badge rule: non-members see 🔒 + "สมาชิก", members see a small "สมาชิก" without the lock. Guests also see "ฟรี · ล็อกอิน" on free content. */
 function VisibilityBadge({ c }: { c: Content }) {
   const locked = useLocked(c);
+  if (c.visibility === "free") return <FreeBadge className="absolute left-2 top-2" />;
   if (c.visibility !== "members") return null;
   return <MemberBadge locked={locked} className={cn("absolute left-2 top-2", !locked && "bg-black/60 backdrop-blur")} />;
 }

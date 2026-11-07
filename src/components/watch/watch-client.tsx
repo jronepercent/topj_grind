@@ -10,6 +10,7 @@ import { RowCard, type ProgressMap } from "@/components/cards/cards";
 import { useViewer } from "@/components/providers";
 import { Switch } from "@/components/ui/switch";
 import { usePlayer, useUI } from "@/lib/stores/player";
+import { contentAccess } from "@/lib/access";
 import { contentHref, formatDuration } from "@/lib/format";
 import type { Chapter, Content, PlaylistWithMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,7 @@ export function WatchClient({ data, children }: { data: WatchData; children: Rea
   const listIdx = playlist ? playlist.items.findIndex((x) => x.id === c.id) : -1;
   const nextItem: Content | undefined = playlist
     ? playlist.items[listIdx + 1]
-    : related.find((r) => r.visibility === "public" || viewer?.is_member || unlocked.has(r.id)) ?? related[0];
+    : related.find((r) => contentAccess(viewer, r.visibility, unlocked.has(r.id)) !== "members") ?? related[0];
   const nextHref = nextItem ? hrefWithList(nextItem, playlist?.meta.id) : null;
   const autoplay = playlist ? plAutoplay : viewer ? viewer.autoplay : true;
 
@@ -234,7 +235,7 @@ function EndScreen({
   onGo: () => void;
 }) {
   const { viewer } = useViewer();
-  const nextLocked = next?.visibility === "members" && !viewer?.is_member && !nextUnlocked;
+  const nextLocked = !!next && contentAccess(viewer, next.visibility, nextUnlocked) === "members";
   const [count, setCount] = React.useState(autoplay && next && !nextLocked ? 5 : -1);
   React.useEffect(() => {
     if (count < 0) return;
@@ -339,7 +340,7 @@ function PlaylistBox({
           {items.map((it, i) => {
             const active = it.id === current;
             const done = progress[it.id]?.completed;
-            const locked = it.visibility === "members" && !viewer?.is_member && !unlocked.has(it.id);
+            const locked = contentAccess(viewer, it.visibility, unlocked.has(it.id)) === "members";
             return (
               <li key={it.id}>
                 <Link

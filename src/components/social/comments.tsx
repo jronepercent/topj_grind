@@ -35,7 +35,7 @@ import {
   reportCommentAction,
 } from "@/app/actions";
 import { formatCount, formatNumber } from "@/lib/format";
-import type { CommentView, Visibility } from "@/lib/types";
+import type { CommentView, ContentVisibility } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
 
@@ -43,7 +43,7 @@ const MAX = 1000;
 
 interface Props {
   contentId: string;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   enabled: boolean;
   initial: { items: CommentView[]; total: number; hasMore: boolean };
   /** for timestamps inside comments */
@@ -58,7 +58,7 @@ export function Comments({ contentId, visibility, enabled, initial, onTime, comp
   const [hasMore, setHasMore] = React.useState(initial.hasMore);
   const [sort, setSort] = React.useState<"top" | "new">("top");
   const [loading, setLoading] = React.useState(false);
-  const canComment = enabled && !!viewer && (visibility === "public" || viewer.is_member);
+  const canComment = enabled && !!viewer && (visibility !== "members" || viewer.is_member); // free = any signed-in viewer
 
   const load = async (s: "top" | "new", offset: number) => {
     setLoading(true);
@@ -181,7 +181,7 @@ function optimistic(viewer: NonNullable<ReturnType<typeof useViewer>["viewer"]>,
   };
 }
 
-function ComposerGate({ visibility }: { visibility: Visibility }) {
+function ComposerGate({ visibility }: { visibility: ContentVisibility }) {
   const { viewer, requireAuth } = useViewer();
   const href = useSubscribeHref();
   if (!viewer)

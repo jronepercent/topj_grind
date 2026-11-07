@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
 import {
-  canWatch,
   ownedCourseContentIds,
   getChapters,
   getContent,
@@ -22,6 +21,8 @@ import { ActionsBar, ChannelRow } from "@/components/watch/actions-bar";
 import { DescriptionBox } from "@/components/watch/description-box";
 import { Comments } from "@/components/social/comments";
 import { MemberBadge } from "@/components/ui/misc";
+import { contentAccess } from "@/lib/access";
+import { FreeBadge } from "@/components/cards/cards";
 import { contentMetadata, videoJsonLd } from "@/lib/seo";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ list?: string }> };
@@ -43,7 +44,8 @@ export default async function WatchPage({ params, searchParams }: Props) {
 
   // Buyers of a course product can watch its members-only lessons without a membership.
   const unlockedSet = viewer && !viewer.is_member ? await ownedCourseContentIds(viewer.id).catch(() => null) : null;
-  const locked = !canWatch(viewer, c, unlockedSet);
+  // "login" (guest on free content) is not locked: the player serves a teaser and then shows the sign-in gate.
+  const locked = contentAccess(viewer, c.visibility, !!unlockedSet?.has(id)) === "members";
   const chapters = getChapters(c);
   // Independent lookups in parallel — this page's server time is the sum of the slowest, not of all.
   const [p, pl, rel, comments, liked, saved, links, resources] = await Promise.all([
@@ -62,7 +64,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
 
   return (
     <div className="tg-page">
-      {c.visibility === "public" && (
+      {c.visibility !== "members" && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd(c, `/watch/${id}`)).replace(/</g, "\\u003c") }} />
       )}
       <WatchClient
@@ -80,6 +82,7 @@ export default async function WatchPage({ params, searchParams }: Props) {
         <div className="flex items-start gap-2">
           <h1 className="t-h2 flex-1 sm:text-[22px] sm:leading-[30px]">{c.title}</h1>
           {c.visibility === "members" && <MemberBadge locked={locked} className="mt-1.5 shrink-0" />}
+          {c.visibility === "free" && <FreeBadge className="mt-1.5 shrink-0" />}
         </div>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ChannelRow />

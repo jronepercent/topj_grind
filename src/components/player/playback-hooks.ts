@@ -5,7 +5,15 @@ import { viewSessionId } from "@/lib/stores/bus";
 import { PROGRESS_SAVE_MS, viewThresholdSec } from "@/lib/view-rules";
 import type { ContentType } from "@/lib/types";
 
-export type PlaySource = { src: string; type: string; captions: string | null; /** ms epoch when the signed URL stops working */ expiresAt?: number | null };
+export type PlaySource = {
+  src: string;
+  type: string;
+  captions: string | null;
+  /** ms epoch when the signed URL stops working */
+  expiresAt?: number | null;
+  /** guest on "free" content: seconds of preview before the sign-in gate */
+  previewSec?: number | null;
+};
 export type PlayError = "members_only" | "unavailable";
 export type PlayFetch = { status: "ok"; source: PlaySource } | { status: PlayError };
 
@@ -17,7 +25,7 @@ export async function fetchPlaySource(id: string, signal?: AbortSignal): Promise
     if (!r.ok) return { status: "unavailable" };
     const j = await r.json();
     const exp = j.expires_at ? Date.parse(j.expires_at) : NaN;
-    return { status: "ok", source: { src: j.src, type: j.type, captions: j.captions ?? null, expiresAt: Number.isFinite(exp) ? exp : null } };
+    return { status: "ok", source: { src: j.src, type: j.type, captions: j.captions ?? null, expiresAt: Number.isFinite(exp) ? exp : null, previewSec: typeof j.preview_sec === "number" ? j.preview_sec : null } };
   } catch (e) {
     if ((e as { name?: string })?.name === "AbortError") throw e;
     return { status: "unavailable" };

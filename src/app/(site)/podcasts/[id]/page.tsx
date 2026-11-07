@@ -7,7 +7,7 @@ import { EpisodeControls, ShowNotes } from "@/components/podcast/podcast-client"
 import { Comments } from "@/components/social/comments";
 import { ChannelRow } from "@/components/watch/actions-bar";
 import { MemberBadge } from "@/components/ui/misc";
-import { RowCard } from "@/components/cards/cards";
+import { FreeBadge, RowCard } from "@/components/cards/cards";
 import { formatLongDuration, thaiDate } from "@/lib/format";
 import { contentMetadata, videoJsonLd } from "@/lib/seo";
 
@@ -34,7 +34,7 @@ export default async function EpisodePage({ params }: Props) {
 
   return (
     <div className="tg-page mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-      {c.visibility === "public" && (
+      {c.visibility !== "members" && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd(c, `/podcasts/${id}`)).replace(/</g, "\\u003c") }} />
       )}
       <div className="flex flex-col gap-8 md:flex-row md:items-end">
@@ -47,6 +47,7 @@ export default async function EpisodePage({ params }: Props) {
           <p className="t-meta tnum mt-2 flex items-center gap-2">
             {thaiDate(c.published_at)} · {formatLongDuration(c.duration_sec)}
             {c.visibility === "members" && <MemberBadge locked={locked} />}
+            {c.visibility === "free" && <FreeBadge />}
           </p>
           <div className="mt-6">
             <EpisodeControls c={c} queue={queue} chapters={chapters} startAt={p && !p.completed ? p.position_sec : undefined} />

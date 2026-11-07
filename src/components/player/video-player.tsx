@@ -27,6 +27,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
+import { LoginGate } from "@/components/content/login-gate";
 import { useSeekBus } from "@/lib/stores/bus";
 import { usePlaySource, useProgressSaver, useViewTracker, type PlaySource } from "./playback-hooks";
 import { formatDuration } from "@/lib/format";
@@ -151,10 +152,13 @@ function PlayerInner({
     const p = player.current;
     if (!p) return;
     const t = p.currentTime;
-    trackView(t, p.paused, p.state.duration);
-    progress.tick(t, p.state.duration);
+    // A guest's teaser is not a real view and has no account to save progress to.
+    if (!source.previewSec) {
+      trackView(t, p.paused, p.state.duration);
+      progress.tick(t, p.state.duration);
+    }
     onTime?.(t, p.paused);
-  }, [onTime, trackView, progress]);
+  }, [onTime, trackView, progress, source.previewSec]);
 
   return (
     <MediaPlayer
@@ -174,11 +178,11 @@ function PlayerInner({
       }}
       onTimeUpdate={onTimeUpdate}
       onPause={() => {
-        progress.flush();
+        if (!source.previewSec) progress.flush();
         onTime?.(player.current?.currentTime ?? 0, true);
       }}
       onEnded={() => {
-        progress.flush();
+        if (!source.previewSec) progress.flush();
         onEnded?.();
       }}
     >
@@ -193,8 +197,45 @@ function PlayerInner({
         <MiniControls />
       )}
       <PlaybackStatus onRetry={onRetry} />
+      {source.previewSec ? <PreviewLimit sec={source.previewSec} poster={poster} variant={variant} id={id} /> : null}
       {children}
     </MediaPlayer>
+  );
+}
+
+/**
+ * Guest teaser on "free" content: a small pill while it plays, then at `sec` the video pauses, can't be
+ * seeked past the cut-off, and a sign-in gate covers the player. Client-side only (lead capture, not DRM).
+ */
+function PreviewLimit({ sec, poster, variant, id }: { sec: number; poster: string | null; variant: "watch" | "mini"; id: string }) {
+  const remote = useMediaRemote();
+  const currentTime = useMediaState("currentTime");
+  const paused = useMediaState("paused");
+  const [gated, setGated] = React.useState(false);
+  const mini = variant === "mini";
+
+  React.useEffect(() => {
+    if (!gated && currentTime >= sec) {
+      setGated(true);
+      remote.pause();
+      remote.seek(sec);
+    } else if (gated && (currentTime > sec + 0.25 || !paused)) {
+      // keyboard shortcuts / seeks still reach the media element behind the gate
+      remote.pause();
+      if (currentTime > sec + 0.25) remote.seek(sec);
+    }
+  }, [currentTime, paused, gated, sec, remote]);
+
+  if (gated) return <LoginGate variant={mini ? "compact" : "player"} thumb={poster} next={mini ? `/watch/${id}` : undefined} />;
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute z-[5] rounded-full bg-black/60 font-medium text-white backdrop-blur",
+        mini ? "left-2 top-2 px-2.5 py-1 text-[11px]" : "left-3 top-3 px-3.5 py-1.5 text-[13px]",
+      )}
+    >
+      ดูฟรี <span className="tnum">{sec}</span> วิ · ล็อกอินเพื่อดูเต็ม
+    </div>
   );
 }
 

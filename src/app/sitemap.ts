@@ -9,9 +9,9 @@ import { LEGAL_LINKS } from "@/lib/legal";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://topjgrind.com";
 
-/** Public content only. */
+/** Public + free content (members-only is left out). */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const content = await listContent({ visibility: "public", limit: 5000 });
+  const content = await listContent({ visibility: ["public", "free"], limit: 5000 });
   const articles = await articleSitemap().catch(() => []);
   const products = await shopSitemap();
   return [

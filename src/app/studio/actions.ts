@@ -20,7 +20,7 @@ import { PODCAST_BUCKET, removeAudioObjects } from "@/lib/server/media";
 import { signImageUpload, storeImage } from "@/lib/server/images";
 import { isValidUrl } from "@/lib/richtext";
 import { HERO_LIMITS, HERO_MAX_SLIDES, isHeroHref } from "@/lib/hero";
-import type { ContentRow, ContentType, HeroSlideRow, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility } from "@/lib/types";
+import type { ContentRow, ContentType, HeroSlideRow, HomeSection, MediaStatus, PublishStatus, SiteSettings, Visibility, ContentVisibility } from "@/lib/types";
 
 export type StudioResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -230,7 +230,7 @@ export interface ContentInput {
   thumbnail_url?: string | null;
   category_id?: string | null;
   tags?: string[];
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
   comments_enabled?: boolean;
   /** @deprecated Shorts are gone: still accepted so older editor builds type-check, but ignored. */
   linked_content_id?: string | null;
@@ -274,7 +274,7 @@ export async function saveContentAction(id: string, input: ContentInput) {
       patch.tags = [...new Set(input.tags.map((t) => t.replace(/^#/, "").trim()).filter(Boolean))].slice(0, 10);
     }
     if (input.visibility !== undefined) {
-      if (input.visibility !== "public" && input.visibility !== "members") throw new HttpError(400, "การมองเห็นไม่ถูกต้อง");
+      if (input.visibility !== "public" && input.visibility !== "free" && input.visibility !== "members") throw new HttpError(400, "การมองเห็นไม่ถูกต้อง");
       patch.visibility = input.visibility;
     }
     if (input.comments_enabled !== undefined) patch.comments_enabled = !!input.comments_enabled;
@@ -355,13 +355,13 @@ export async function saveContentAction(id: string, input: ContentInput) {
   });
 }
 
-export async function bulkContentAction(ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") {
+export async function bulkContentAction(ids: string[], op: "public" | "free" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") {
   return admin(async (a) => {
     const list = uuids(ids);
     if (!list.length) return;
     const db = adminDb();
     const now = nowIso();
-    if (op === "public" || op === "members") {
+    if (op === "public" || op === "free" || op === "members") {
       must(await db.from("content").update({ visibility: op, updated_at: now }).in("id", list), "visibility");
     } else if (op === "draft") {
       must(

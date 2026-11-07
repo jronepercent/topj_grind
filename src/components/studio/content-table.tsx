@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArchiveRestore, ChartColumn, CircleCheck, CircleDashed, Eye, Globe, Link2, ListPlus, Lock, Mail, Pencil, Search, Trash, X } from "lucide-react";
+import { ArchiveRestore, ChartColumn, CircleCheck, CircleDashed, Eye, Globe, Link2, ListPlus, Lock, LogIn, Mail, Pencil, Search, Trash, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from "@/components/ui/dropdown";
@@ -12,7 +12,7 @@ import { AddToPlaylistDialog } from "@/components/cards/add-to-playlist";
 import { bulkContentAction, contentStatsAction } from "@/app/studio/actions";
 import { contentHref, formatCount, formatNumber, TYPE_LABEL } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ContentType, Visibility } from "@/lib/types";
+import type { ContentType, ContentVisibility } from "@/lib/types";
 import type { DailyPoint, StudioContentRow } from "./types";
 import { ConfirmDialog } from "./confirm";
 import { SendEmailDialog } from "./send-email-button";
@@ -37,7 +37,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState<ContentType | "all">("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
-  const [vis, setVis] = React.useState<Visibility | "all">("all");
+  const [vis, setVis] = React.useState<ContentVisibility | "all">("all");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [playlistFor, setPlaylistFor] = React.useState<string[] | null>(null);
   const [statsFor, setStatsFor] = React.useState<StudioContentRow | null>(null);
@@ -70,7 +70,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
   const allChecked = list.length > 0 && list.every((r) => selected.has(r.id));
   const toggleAll = () => setSelected(allChecked ? new Set() : new Set(list.map((r) => r.id)));
 
-  const run = async (ids: string[], op: "public" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") => {
+  const run = async (ids: string[], op: "public" | "free" | "members" | "delete" | "restore" | "purge" | "draft" | "publish") => {
     const before = rows;
     const now = new Date().toISOString();
     setRows((rs) =>
@@ -79,7 +79,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
         : rs.map((r) =>
             !ids.includes(r.id)
               ? r
-              : op === "public" || op === "members"
+              : op === "public" || op === "free" || op === "members"
                 ? { ...r, visibility: op }
                 : op === "draft"
                   ? { ...r, status: "draft" as const, published_at: null, scheduled_at: null }
@@ -115,7 +115,7 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
     else if (op === "purge") toast(`ลบถาวร ${n} รายการแล้ว`);
     else if (op === "draft") toast(`เปลี่ยนเป็นฉบับร่าง ${n} รายการแล้ว`);
     else if (op === "publish") toast(`เผยแพร่ ${n} รายการแล้ว (คลิปที่ยังประมวลผลไม่เสร็จจะเผยแพร่เองเมื่อพร้อม)`);
-    else toast(op === "members" ? `ตั้งเป็นเฉพาะสมาชิก ${n} รายการแล้ว` : `ตั้งเป็นสาธารณะ ${n} รายการแล้ว`);
+    else toast(op === "members" ? `ตั้งเป็นเฉพาะสมาชิก ${n} รายการแล้ว` : op === "free" ? `ตั้งเป็นฟรีเมื่อล็อกอิน ${n} รายการแล้ว` : `ตั้งเป็นสาธารณะ ${n} รายการแล้ว`);
     router.refresh();
   };
 
@@ -184,9 +184,10 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
               <option value="processing">กำลังอัปโหลด/ประมวลผล</option>
               <option value="failed">ล้มเหลว</option>
             </select>
-            <select aria-label="การมองเห็น" value={vis} onChange={(e) => setVis(e.target.value as Visibility | "all")} className={selectClass} style={selectStyle}>
+            <select aria-label="การมองเห็น" value={vis} onChange={(e) => setVis(e.target.value as ContentVisibility | "all")} className={selectClass} style={selectStyle}>
               <option value="all">ทุกการมองเห็น</option>
               <option value="public">สาธารณะ</option>
+              <option value="free">ฟรี (ล็อกอิน)</option>
               <option value="members">เฉพาะสมาชิก</option>
             </select>
             {filtersOn && (
@@ -231,6 +232,9 @@ export function ContentTable({ rows: initial, initialTab }: { rows: StudioConten
                 <DropdownContent align="end">
                   <DropdownItem onSelect={() => run(sel, "public")}>
                     <Globe /> สาธารณะ
+                  </DropdownItem>
+                  <DropdownItem onSelect={() => run(sel, "free")}>
+                    <LogIn /> ตั้งเป็นฟรีเมื่อล็อกอิน
                   </DropdownItem>
                   <DropdownItem onSelect={() => run(sel, "members")}>
                     <Lock className="!text-member" /> เฉพาะสมาชิก
