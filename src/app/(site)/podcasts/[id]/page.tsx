@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getViewer } from "@/lib/server/auth";
 import { getChapters, getContent, getLinks, getProgress, getResources, listComments, listContent, ownedCourseContentIds } from "@/lib/server/queries";
 import { EpisodeControls, ShowNotes } from "@/components/podcast/podcast-client";
+import { TranscriptLyrics } from "@/components/podcast/transcript-lyrics";
 import { Comments } from "@/components/social/comments";
 import { ChannelRow } from "@/components/watch/actions-bar";
 import { MemberBadge } from "@/components/ui/misc";
@@ -57,6 +58,7 @@ export default async function EpisodePage({ params }: Props) {
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
+          {c.has_captions && <TranscriptLyrics c={c} queue={queue} chapters={chapters} variant="card" />}
           <ChannelRow />
           <ShowNotes c={c} chapters={chapters} links={await getLinks(id)} resources={await getResources(id)} queue={queue} />
           <Comments contentId={id} visibility={c.visibility} enabled={c.comments_enabled} initial={await listComments(id, viewer, { limit: 20 })} />

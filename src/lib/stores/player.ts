@@ -11,6 +11,8 @@ export interface PlayerItem {
   duration: number;
   chapters?: Chapter[];
   startAt?: number;
+  /** episode has Thai captions (transcript "lyrics" view) */
+  captions?: boolean;
 }
 
 type Sleep = { mode: "off" } | { mode: "time"; at: number; minutes: number } | { mode: "end" };
@@ -35,6 +37,9 @@ interface PlayerState {
   previous: () => void;
   close: () => void;
   setExpanded: (v: boolean) => void;
+  /** full-sheet transcript view on/off (remembered in localStorage tg_lyrics_on) */
+  lyricsOn: boolean;
+  setLyricsOn: (v: boolean) => void;
   setSleep: (s: Sleep) => void;
   sync: (s: { paused?: boolean; currentTime?: number; duration?: number; rate?: number }) => void;
   /** set by GlobalPlayer so other components can toggle playback */
@@ -42,11 +47,20 @@ interface PlayerState {
   setControls: (c: PlayerState["controls"]) => void;
 }
 
+function readLyricsOn() {
+  try {
+    return typeof window !== "undefined" && localStorage.getItem("tg_lyrics_on") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const usePlayer = create<PlayerState>((set, get) => ({
   item: null,
   queue: [],
   history: [],
   expanded: false,
+  lyricsOn: readLyricsOn(),
   nonce: 0,
   sleep: { mode: "off" },
   paused: true,
@@ -97,6 +111,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
   close: () => set({ item: null, expanded: false, queue: [], history: [], sleep: { mode: "off" } }),
   setExpanded: (expanded) => set({ expanded }),
+  setLyricsOn: (lyricsOn) => {
+    try {
+      localStorage.setItem("tg_lyrics_on", lyricsOn ? "1" : "0");
+    } catch {}
+    set({ lyricsOn });
+  },
   setSleep: (sleep) => set({ sleep }),
   sync: (s) => set(s),
   setControls: (controls) => set({ controls }),

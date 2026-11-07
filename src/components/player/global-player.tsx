@@ -3,11 +3,12 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Expand, ListMusic, Moon, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import { Captions, ChevronDown, Expand, ListMusic, Moon, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { usePlayer, type PlayerItem } from "@/lib/stores/player";
 import { VideoPlayer } from "./video-player";
 import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { useAudioEngine } from "./audio-engine";
+import { TranscriptLyrics } from "@/components/podcast/transcript-lyrics";
 import { useViewer } from "@/components/providers";
 import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -118,7 +119,9 @@ function Cover({ src, size, className }: { src: string | null; size: number; cla
 const SPEEDS = [0.8, 1, 1.25, 1.5, 1.75, 2];
 
 function AudioUI({ item, loading, gated }: { item: PlayerItem; loading: boolean; gated?: boolean }) {
-  const { expanded, setExpanded, close, queue, sleep, setSleep, play, paused, currentTime: time, rate, controls } = usePlayer();
+  const { expanded, setExpanded, close, queue, sleep, setSleep, play, paused, currentTime: time, rate, controls, lyricsOn: lyricsPref, setLyricsOn } = usePlayer();
+  const canLyrics = item.type === "podcast" && !!item.captions;
+  const lyricsOn = canLyrics && lyricsPref;
   const duration = usePlayer((s) => s.duration) || item.duration;
   // Same calls the old media-remote made, now routed to the shared <audio> element.
   const remote = {
@@ -175,12 +178,36 @@ function AudioUI({ item, loading, gated }: { item: PlayerItem; loading: boolean;
               หน้าตอน
             </Link>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 pb-8 pt-4">
-            <div className={cn("mx-auto aspect-square w-full max-w-[340px] overflow-hidden rounded-[20px] shadow-2xl transition-transform duration-500 ease-[var(--ease-apple)]", paused && "scale-[0.88]")}>
-              {item.thumb && <Image src={item.thumb} alt="" width={680} height={680} className="size-full object-cover" />}
+          <div className={cn("px-6 pt-4", lyricsOn ? "flex min-h-0 flex-1 flex-col pb-6" : "flex-1 overflow-y-auto pb-8")}>
+            {lyricsOn ? (
+              <div className="-mx-6 min-h-0 flex-1 sm:h-[340px] sm:flex-none">
+                <TranscriptLyrics
+                  variant="sheet"
+                  c={{ id: item.id, title: item.title, thumbnail_url: item.thumb, duration_sec: item.duration, has_captions: true }}
+                  chapters={item.chapters}
+                />
+              </div>
+            ) : (
+              <div className={cn("mx-auto aspect-square w-full max-w-[340px] overflow-hidden rounded-[20px] shadow-2xl transition-transform duration-500 ease-[var(--ease-apple)]", paused && "scale-[0.88]")}>
+                {item.thumb && <Image src={item.thumb} alt="" width={680} height={680} className="size-full object-cover" />}
+              </div>
+            )}
+            <div className={cn("flex items-start gap-3", lyricsOn ? "mt-3" : "mt-6")}>
+              <div className="min-w-0 flex-1">
+                <h2 className="t-h2 line-clamp-2">{item.title}</h2>
+                <p className="t-meta">TOPJ_GRIND{chapter ? ` · ${chapter.title}` : ""}</p>
+              </div>
+              {canLyrics && (
+                <button
+                  onClick={() => setLyricsOn(!lyricsOn)}
+                  aria-pressed={lyricsOn}
+                  aria-label="ตัวหนังสือ"
+                  className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium", lyricsOn ? "bg-text text-bg" : "bg-hover hover:bg-[var(--border-strong)]")}
+                >
+                  <Captions className="size-4" /> ตัวหนังสือ
+                </button>
+              )}
             </div>
-            <h2 className="t-h2 mt-6 line-clamp-2">{item.title}</h2>
-            <p className="t-meta">TOPJ_GRIND{chapter ? ` · ${chapter.title}` : ""}</p>
 
             <input
               type="range"
@@ -209,6 +236,8 @@ function AudioUI({ item, loading, gated }: { item: PlayerItem; loading: boolean;
               </button>
             </div>
 
+            {!lyricsOn && (
+              <>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <div className="rounded-[14px] bg-surface p-3">
                 <p className="t-caption mb-2 text-text-2">ความเร็ว</p>
@@ -288,6 +317,8 @@ function AudioUI({ item, loading, gated }: { item: PlayerItem; loading: boolean;
                   ))}
                 </ul>
               </div>
+            )}
+              </>
             )}
           </div>
         </SheetContent>

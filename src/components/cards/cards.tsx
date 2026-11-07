@@ -201,8 +201,8 @@ export function RowCard({
   );
 }
 
-export function toPlayerItem(c: Content): PlayerItem {
-  return { id: c.id, type: "podcast", title: c.title, thumb: c.thumbnail_url, duration: c.duration_sec };
+export function toPlayerItem(c: Pick<Content, "id" | "title" | "thumbnail_url" | "duration_sec" | "has_captions">): PlayerItem {
+  return { id: c.id, type: "podcast", title: c.title, thumb: c.thumbnail_url, duration: c.duration_sec, captions: c.has_captions || undefined };
 }
 
 /** Play/pause straight from a card without opening the episode page. */
