@@ -206,7 +206,7 @@ function Scroller({ cues, id, variant, onJump }: { cues: Cue[]; id: string; vari
     placed.current = true;
   }, [idx, scrollTo]);
 
-  const text = variant === "sheet" ? "text-[22px] sm:text-[24px]" : "text-[20px] sm:text-[22px]";
+  const text = variant === "sheet" ? "text-[17px] sm:text-[18px] py-2.5" : "text-[16px] sm:text-[17px] py-2";
   const mask = { maskImage: FADE, WebkitMaskImage: FADE };
 
   return (
@@ -234,7 +234,7 @@ function Scroller({ cues, id, variant, onJump }: { cues: Cue[]; id: string; vari
             }}
             aria-current={i === idx ? "true" : undefined}
             className={cn(
-              "block w-full rounded-[10px] py-1.5 text-left font-bold leading-[1.35] text-text transition-opacity duration-200 motion-reduce:transition-none",
+              "block w-full rounded-[10px] px-0.5 text-left font-normal leading-[1.6] text-text transition-opacity duration-200 motion-reduce:transition-none",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
               text,
               idx < 0 ? "opacity-[0.65]" : i === idx ? "opacity-100" : i < idx ? "opacity-[0.4]" : "opacity-[0.65]",

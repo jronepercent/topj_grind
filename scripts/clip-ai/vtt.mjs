@@ -1,14 +1,17 @@
 // Usage: node scripts/clip-ai/vtt.mjs <id…|--all>   (no env needed; reads .clip-ai/<id>/scribe.json)
+// Scribe returns Thai as syllable/character tokens, so we first glue tokens into phrases, segment phrases into
+// real words (Intl.Segmenter), then pack words into short, airy cues (1 line preferred, 2 max).
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { WORK, clipDir } from "./lib.mjs";
 
-const MAX_LINE = 42, MIN_DUR = 1, MAX_DUR = 6, PAUSE = 0.6, GAP = 0.04;
-const seg = new Intl.Segmenter("th", { granularity: "word" });
-const grapheme = new Intl.Segmenter("th", { granularity: "grapheme" });
-const glen = (s) => [...grapheme.segment(s)].length;
-const FILLER = /^(?:อืม+|เอ่อ+|เออ+|อ่า+|อา+|อึม+|เอ้อ+|ฮึ+|หืม+|อะ|เนาะ|ครับ|ค่ะ|คะ|นะครับ|นะคะ)$/u;
-const SENT_END = /[.!?…。！？]$/;
+const LINE = 34, IDEAL_TOTAL = 40, MIN_DUR = 0.8, MAX_DUR = 6, PAUSE_BREAK = 0.6, PHRASE_GAP = 0.35, GAP = 0.04;
+const wordSeg = new Intl.Segmenter("th", { granularity: "word" });
+const graphSeg = new Intl.Segmenter("th", { granularity: "grapheme" });
+const glen = (s) => [...graphSeg.segment(s)].length;
+const FILLER = /^(?:อืม+|เอ่อ+|เออ+|อ่า+|อา+|อึม+|เอ้อ+|ฮึ+|หืม+|อะ|เนาะ|ครับ|คับ|ค่ะ|คะ|นะครับ|นะคะ)$/u;
+const PARTICLE_END = /(?:ครับ|คับ|ค่ะ|คะ|นะ|เลย|แล้ว|ด้วย)$/u;
+const ATTACH = /^[ะ-ฺๅ-๎ๆ]/u; // vowel/tone/mark/ๆ that must stay with the previous glyph
 
 function ts(t) {
   const ms = Math.max(0, Math.round(t * 1000));
@@ -17,98 +20,186 @@ function ts(t) {
   return `${p(h)}:${p(m)}:${p(s)}.${p(r, 3)}`;
 }
 
-/** Split text into at most 2 lines, breaking only at spaces / Thai word boundaries. null if it cannot fit. */
-function wrap(text) {
-  text = text.replace(/\s+/g, " ").trim();
-  if (glen(text) <= MAX_LINE) return [text];
-  const parts = [...seg.segment(text)].map((s) => s.segment);
-  let best = null;
-  let left = "";
-  for (let i = 0; i < parts.length - 1; i++) {
-    left += parts[i];
-    const right = parts.slice(i + 1).join("");
-    const a = left.trim(), b = right.trim();
-    if (!a || !b) continue;
-    const la = glen(a), lb = glen(b);
-    if (la > MAX_LINE || lb > MAX_LINE) continue;
-    const score = Math.abs(la - lb) - (/\s$/.test(left) || /^\s/.test(right) ? 6 : 0);
-    if (!best || score < best.score) best = { score, lines: [a, b] };
+const script = (t) => (/[฀-๿]/.test(t) ? "th" : /[A-Za-z0-9]/.test(t) ? "en" : "");
+
+/** Scribe tokens -> phrases [{ text, tokens, map, spaceBefore, gapBefore }] */
+function toPhrases(words) {
+  const phrases = [];
+  let cur = null, sawSpace = false, lastEnd = null, lastScript = "";
+  const flush = () => {
+    if (cur) phrases.push(cur);
+    cur = null;
+  };
+  for (const w of words) {
+    if (w.type === "audio_event") continue;
+    const raw = w.text ?? "";
+    if (w.type === "spacing" || raw.trim() === "") {
+      sawSpace = true;
+      continue;
+    }
+    const text = raw.trim();
+    const sc = script(text);
+    const gap = lastEnd == null ? 0 : w.start - lastEnd;
+    const scriptChange = cur && sc && lastScript && sc !== lastScript;
+    const attach = ATTACH.test(text); // a stray vowel/tone token must stay glued to the consonant before it
+    if (cur && !attach && (sawSpace || gap > PHRASE_GAP || scriptChange)) flush();
+    if (cur) sawSpace = false;
+    if (!cur) {
+      cur = { text: "", tokens: [], map: [], spaceBefore: phrases.length > 0 && (sawSpace || gap > PHRASE_GAP), gapBefore: lastEnd == null ? Infinity : gap };
+      sawSpace = false;
+    }
+    const ti = cur.tokens.length;
+    cur.tokens.push({ start: w.start, end: w.end });
+    for (let k = 0; k < text.length; k++) cur.map.push(ti);
+    cur.text += text;
+    lastEnd = w.end;
+    if (sc) lastScript = sc;
   }
-  return best ? best.lines : null;
+  flush();
+  return phrases;
+}
+
+/** phrases -> flat word units with boundary ranks. */
+function toUnits(phrases) {
+  const units = [];
+  phrases.forEach((p, pi) => {
+    let parts = [];
+    for (const s of wordSeg.segment(p.text)) {
+      if (parts.length && ATTACH.test(s.segment)) {
+        const prev = parts[parts.length - 1];
+        prev.text += s.segment;
+        prev.len += s.segment.length;
+      } else parts.push({ index: s.index, text: s.segment, len: s.segment.length });
+    }
+    parts.forEach((part, k) => {
+      const first = k === 0, last = k === parts.length - 1;
+      units.push({
+        text: part.text,
+        start: p.tokens[p.map[part.index]].start,
+        end: p.tokens[p.map[part.index + part.len - 1]].end,
+        spaceBefore: first && p.spaceBefore,
+        phraseStart: first,
+        phraseEnd: last,
+        particle: last && PARTICLE_END.test(p.text),
+      });
+    });
+  });
+  // rank of the boundary AFTER unit k: 1 pause, 2 particle, 3 phrase, 4 inside phrase (Infinity after last)
+  units.forEach((u, k) => {
+    const n = units[k + 1];
+    if (!n) u.rank = 0;
+    else if (n.start - u.end >= PAUSE_BREAK) u.rank = 1;
+    else if (u.phraseEnd) u.rank = u.particle ? 2 : 3;
+    else u.rank = 4;
+  });
+  let c = 0;
+  for (const u of units) {
+    u.glen = glen(u.text);
+    u.ulen = u.glen + (u.spaceBefore ? 1 : 0);
+    c += u.ulen;
+    u.cum = c;
+  }
+  return units;
+}
+
+const join = (us) => us.map((u, k) => (k && u.spaceBefore ? " " : "") + u.text).join("").trim();
+
+/** Best 1- or 2-line layout for units; null if impossible. Lengths come from precomputed per-unit grapheme counts. */
+function layout(us) {
+  const len = (x, y) => us.slice(x, y).reduce((t, u, k) => t + u.glen + (k && u.spaceBefore ? 1 : 0), 0);
+  const g = len(0, us.length);
+  if (g <= LINE) return { lines: [join(us)], g, cost: 0 };
+  let best = null;
+  for (let k = 0; k < us.length - 1; k++) {
+    const la = len(0, k + 1), lb = len(k + 1, us.length);
+    if (la > LINE || lb > LINE) continue;
+    const score = Math.abs(la - lb) * 0.3 + (us[k].phraseEnd ? 0 : 100);
+    if (!best || score < best.score) best = { score, k };
+  }
+  if (!best) return null;
+  return { lines: [join(us.slice(0, best.k + 1)), join(us.slice(best.k + 1))], g, cost: 10 + (best.score >= 100 ? 5 : 0) + Math.max(0, g - IDEAL_TOTAL) * 3 };
+}
+
+function cuesFromUnits(units) {
+  const n = units.length;
+  const f = new Array(n + 1).fill(Infinity);
+  const back = new Array(n + 1).fill(-1);
+  const lay = new Array(n + 1);
+  f[0] = 0;
+  for (let i = 0; i < n; i++) {
+    if (f[i] === Infinity) continue;
+    for (let j = i; j < n; j++) {
+      // cue = units[i..j]; never cross a pause >= 0.6 s
+      if (j > i && units[j - 1].rank === 1) break;
+      if (j > i && units[j].end - units[i].start > MAX_DUR) break;
+      const approx = units[j].cum - units[i].cum + units[i].ulen;
+      if (j > i && approx > LINE * 2 + 2) break;
+      const us = units.slice(i, j + 1);
+      const l = layout(us);
+      if (!l && j > i) continue;
+      const L = l ?? { lines: [join(us)], g: units[j].cum - units[i].cum + units[i].ulen, cost: 40 };
+      let cost = 8 + L.cost;
+      const dur = units[j].end - units[i].start;
+      if (dur < MIN_DUR) cost += (MIN_DUR - dur) * 8;
+      for (let k = i; k < j; k++) if (units[k].rank === 2) cost += 6;
+      const text = L.lines.join("");
+      if (FILLER.test(text.replace(/\s+/g, ""))) cost += 30;
+      if (j < n - 1) cost += units[j].rank <= 2 ? 0 : units[j].rank === 3 ? 3 : 14;
+      const v = f[i] + cost;
+      if (v < f[j + 1]) {
+        f[j + 1] = v;
+        back[j + 1] = i;
+        lay[j + 1] = L;
+      }
+    }
+  }
+  const cues = [];
+  for (let j = n; j > 0; j = back[j]) {
+    const i = back[j];
+    cues.push({ start: units[i].start, end: units[j - 1].end, lines: lay[j].lines });
+  }
+  return cues.reverse();
 }
 
 function build(j) {
-  const all = (j.words || []).filter((w) => w.type !== "audio_event");
-  const spaced = new Set();
-  for (let i = 1; i < all.length; i++) if (all[i].type === "spacing" && all[i - 1].type === "word" && /\s/.test(all[i].text)) spaced.add(all[i - 1]);
-  const units = all
-    .filter((w) => w.type === "word" && w.text?.trim() !== "")
-    .map((w) => ({ text: w.text.trim() + (spaced.has(w) ? " " : ""), start: w.start, end: w.end }));
-
-  const textOf = (u) => u.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
-  const cues = [];
-  let cur = null;
-  const close = () => {
-    if (cur) cues.push(cur);
-    cur = null;
-  };
-  for (const u of units) {
-    if (cur) {
-      const gap = u.start - cur.end;
-      const prevText = cur.units[cur.units.length - 1].text.trim();
-      if (gap > PAUSE || SENT_END.test(prevText) || u.end - cur.start > MAX_DUR) close();
-      else if (wrap(textOf([...cur.units, u])) === null) close();
-    }
-    if (!cur) cur = { start: u.start, end: u.end, units: [] };
-    cur.units.push(u);
-    cur.end = u.end;
-  }
-  close();
-
+  const units = toUnits(toPhrases(j.words || []));
+  if (!units.length) return [];
+  let cues = cuesFromUnits(units);
   // drop filler-only / punctuation-only cues
-  const keep = cues.filter((c) => {
-    const t = textOf(c.units).replace(/[\p{P}\p{S}\s]+/gu, " ").trim();
+  cues = cues.filter((c) => {
+    const t = c.lines.join(" ").replace(/[\p{P}\p{S}\s]+/gu, " ").trim();
     return t && t.split(" ").some((w) => !FILLER.test(w));
   });
-  // merge too-short cues with the next one when close enough and it still fits
-  const merged = [];
-  for (const c of keep) {
-    const p = merged[merged.length - 1];
-    if (p && p.end - p.start < MIN_DUR && c.start - p.end <= PAUSE && c.end - p.start <= MAX_DUR && wrap(textOf([...p.units, ...c.units]))) {
-      p.units.push(...c.units);
-      p.end = c.end;
-    } else merged.push(c);
-  }
   // timing: stretch to min duration where room allows, never overlap
-  for (let i = 0; i < merged.length; i++) {
-    const c = merged[i], next = merged[i + 1];
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i], next = cues[i + 1];
     let end = Math.max(c.end, c.start + MIN_DUR);
     if (next) end = Math.min(end, Math.max(c.end, next.start - GAP));
     if (next && end > next.start - GAP) end = Math.max(c.start + 0.2, next.start - GAP);
-    c.end = end;
+    c.end = Math.min(end, c.start + MAX_DUR);
   }
-  return merged
-    .map((c) => ({ start: c.start, end: c.end, lines: wrap(textOf(c.units)) ?? [textOf(c.units)] }))
-    .filter((c) => c.end > c.start);
+  return cues.filter((c) => c.end > c.start);
 }
 
-const args = process.argv.slice(2);
-let ids = args.filter((a) => !a.startsWith("--"));
-if (args.includes("--all")) ids = (await readdir(WORK, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory()).map((d) => d.name);
-if (!ids.length) {
-  console.error("Give clip id(s) or --all.");
-  process.exit(1);
-}
-for (const id of ids) {
-  let j;
-  try {
-    j = JSON.parse(await readFile(path.join(clipDir(id), "scribe.json"), "utf8"));
-  } catch {
-    console.error(`skip  ${id}: no scribe.json (run transcribe.mjs first)`);
-    continue;
+{
+  const args = process.argv.slice(2);
+  let ids = args.filter((a) => !a.startsWith("--"));
+  if (args.includes("--all")) ids = (await readdir(WORK, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory()).map((d) => d.name);
+  if (!ids.length) {
+    console.error("Give clip id(s) or --all.");
+    process.exit(1);
   }
-  const cues = build(j);
-  const out = "WEBVTT\n\n" + cues.map((c) => `${ts(c.start)} --> ${ts(c.end)}\n${c.lines.join("\n")}`).join("\n\n") + "\n";
-  await writeFile(path.join(clipDir(id), "captions.vtt"), out);
-  console.log(`ok    ${id}: ${cues.length} cues`);
+  for (const id of ids) {
+    let j;
+    try {
+      j = JSON.parse(await readFile(path.join(clipDir(id), "scribe.json"), "utf8"));
+    } catch {
+      console.error(`skip  ${id}: no scribe.json (run transcribe.mjs first)`);
+      continue;
+    }
+    const cues = build(j);
+    const out = "WEBVTT\n\n" + cues.map((c) => `${ts(c.start)} --> ${ts(c.end)}\n${c.lines.join("\n")}`).join("\n\n") + "\n";
+    await writeFile(path.join(clipDir(id), "captions.vtt"), out);
+    console.log(`ok    ${id}: ${cues.length} cues`);
+  }
 }
